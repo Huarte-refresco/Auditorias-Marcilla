@@ -165,15 +165,17 @@ function makeDB(){
   }
   function subscribe(sub){
     sub.map=new Map();sub.sig=null;subs.push(sub);
-    sub.run=async()=>{if(sub.busy)return;sub.busy=true;try{await load(sub);sub.failed=false}catch(e){if(!sub.failed&&sub.err)sub.err(e);sub.failed=true}finally{sub.busy=false}};
+    sub.run=async()=>{if(sub.busy)return;sub.busy=true;sub.last=Date.now();try{await load(sub);sub.failed=false}catch(e){if(!sub.failed&&sub.err)sub.err(e);sub.failed=true}finally{sub.busy=false}};
     sub.run();return()=>{const i=subs.indexOf(sub);if(i>=0)subs.splice(i,1)}
   }
   /* Tiempo real: cuando alguien guarda, se recarga lo que cambió. Respaldo: recarga cada minuto. */
   const timers={};
   const kick=coll=>{clearTimeout(timers[coll]);timers[coll]=setTimeout(()=>subs.forEach(s=>{if(s.coll===coll)s.run()}),400)};
   try{Object.keys(SCHEMA).forEach(coll=>{sb.channel('rt-'+coll).on('postgres_changes',{event:'*',schema:'public',table:SCHEMA[coll].table},()=>kick(coll)).subscribe()})}catch(e){}
-  setInterval(()=>{if(!document.hidden)subs.forEach(s=>s.run&&s.run())},(CFG.pollSeconds||60)*1000);
-  document.addEventListener('visibilitychange',()=>{if(!document.hidden)subs.forEach(s=>s.run&&s.run())});
+  const SLOW={personas:1,departamentos:1,puntos:1,config:1};
+  const tick=()=>{if(document.hidden)return;const now=Date.now();subs.forEach(s=>{if(!s.run)return;if(SLOW[s.coll]&&now-(s.last||0)<600000)return;s.run()})};
+  setInterval(tick,(CFG.pollSeconds||60)*1000);
+  document.addEventListener('visibilitychange',tick);
   const findCached=(coll,id)=>{for(const s of subs){if(s.coll===coll&&s.map.has(id))return s.map.get(id)}return null};
   function applyLocal(coll,id,data){
     subs.forEach(s=>{if(s.coll!==coll||(s.docId&&s.docId!==id))return;
@@ -221,18 +223,37 @@ function makeDB(){
 
 /* ---- fotos en el almacenamiento privado "fotos" (carpetas ref/ e inc/) ---- */
 const photoURL={},photoP={},photoFail={};
-function loadPhoto(path){
+const PHOTO_CACHE='aud-fotos-v1';
+let photoActive=0;const photoQ=[];
+function photoSlot(prio){return new Promise(res=>{const go=()=>{photoActive++;res()};if(photoActive<5)go();else if(prio)photoQ.unshift(go);else photoQ.push(go)})}
+function photoDone(){photoActive--;const n=photoQ.shift();if(n)n()}
+async function cacheGet(p){try{if(!window.caches)return null;const c=await caches.open(PHOTO_CACHE);const r=await c.match('/__fotos/'+encodeURI(p));return r?await r.blob():null}catch(e){return null}}
+async function cachePut(p,b){try{if(!window.caches)return;const c=await caches.open(PHOTO_CACHE);await c.put('/__fotos/'+encodeURI(p),new Response(b,{headers:{'Content-Type':b.type||'image/jpeg'}}))}catch(e){}}
+async function cacheDel(p){try{if(!window.caches)return;const c=await caches.open(PHOTO_CACHE);await c.delete('/__fotos/'+encodeURI(p))}catch(e){}}
+function loadPhoto(path,prio){
   if(!photoP[path]){
-    photoP[path]=sb.storage.from(BUCKET).download(path).then(r=>{if(r.error)throw dbErr(r.error);photoURL[path]=URL.createObjectURL(r.data);return photoURL[path]}).catch(e=>{delete photoP[path];photoFail[path]=Date.now();throw e})
+    photoP[path]=(async()=>{
+      let b=await cacheGet(path);
+      if(!b){await photoSlot(prio);try{const r=await sb.storage.from(BUCKET).download(path);if(r.error)throw dbErr(r.error);b=r.data;cachePut(path,b)}finally{photoDone()}}
+      photoURL[path]=URL.createObjectURL(b);return photoURL[path]
+    })().catch(e=>{delete photoP[path];photoFail[path]=Date.now();throw e})
   }
   return photoP[path]
 }
+let photoIO=null;
+function fetchImg(img){
+  const p=img.dataset.ph;
+  if(photoURL[p]){img.src=photoURL[p];return}
+  if(photoFail[p]&&Date.now()-photoFail[p]<30000)return;
+  loadPhoto(p).then(u=>{document.querySelectorAll('img[data-ph]').forEach(i=>{if(i.dataset.ph===p&&i.getAttribute('src')!==u)i.src=u})}).catch(()=>{})
+}
 function hydrate(){
+  if(!photoIO&&'IntersectionObserver' in window)photoIO=new IntersectionObserver(es=>es.forEach(e=>{if(e.isIntersecting){photoIO.unobserve(e.target);fetchImg(e.target)}}),{rootMargin:'300px'});
+  if(photoIO)photoIO.disconnect();
   document.querySelectorAll('img[data-ph]').forEach(img=>{
     const p=img.dataset.ph;
     if(photoURL[p]){if(img.getAttribute('src')!==photoURL[p])img.src=photoURL[p];return}
-    if(photoFail[p]&&Date.now()-photoFail[p]<30000)return;
-    loadPhoto(p).then(()=>hydrate()).catch(()=>{})
+    if(photoIO)photoIO.observe(img);else fetchImg(img)
   })
 }
 async function preloadPhotos(sel){
@@ -240,7 +261,7 @@ async function preloadPhotos(sel){
   await Promise.all(ps.map(p=>loadPhoto(p).catch(()=>null)));hydrate()
 }
 function dataURItoBlob(u){const a=u.split(','),m=/:(.*?);/.exec(a[0])[1],b=atob(a[1]),u8=new Uint8Array(b.length);for(let i=0;i<b.length;i++)u8[i]=b.charCodeAt(i);return new Blob([u8],{type:m})}
-async function putPhoto(path,dataUri){const r=await sb.storage.from(BUCKET).upload(path,dataURItoBlob(dataUri),{contentType:'image/jpeg',upsert:true});if(r.error)throw dbErr(r.error)}
+async function putPhoto(path,dataUri){const r=await sb.storage.from(BUCKET).upload(path,dataURItoBlob(dataUri),{contentType:'image/jpeg',upsert:true});if(r.error)throw dbErr(r.error);delete photoP[path];delete photoURL[path];cacheDel(path)}
 async function savePhotoPair(prefix,id,ph){await putPhoto(prefix+'/'+id+'.jpg',ph.full);await putPhoto(prefix+'/'+id+'_t.jpg',ph.thumb)}
 async function inlinePhotos(html){
   const paths=[...new Set([...html.matchAll(/data-ph="([^"]+)"/g)].map(m=>m[1]))],map={};
@@ -513,9 +534,11 @@ async function hkCopy(){
   try{await navigator.clipboard.writeText(tsv);toast('Copiadas '+n+' filas (sin cabecera). Pega en el Excel del holding con Ctrl+V')}
   catch(e){openSheet('Copiar para el Excel del holding','<p class="muted small">Selecciona todo el texto, cópialo (Ctrl+C) y pégalo en la primera celda libre del Excel del holding. Son '+n+' filas, sin cabecera.</p><textarea id="tsvbox" rows="10" readonly style="font:12px monospace;white-space:pre;overflow:auto">'+esc(tsv)+'</textarea>',{noSave:true,wire:()=>{const t=$('#tsvbox');t.focus();t.select()}})}
 }
-function hkXlsx(){
+let xlsxP=null;
+function needXLSX(){if(window.XLSX)return Promise.resolve();if(!xlsxP)xlsxP=new Promise((res,rej)=>{const sc=document.createElement('script');sc.src='xlsx.full.min.js';sc.onload=res;sc.onerror=()=>{xlsxP=null;rej(new Error('xlsx'))};document.head.appendChild(sc)});return xlsxP}
+async function hkXlsx(){
   if(!hkExportRows().length){toast('No hay filas en ese periodo');return}
-  if(!window.XLSX){toast('No se pudo cargar el generador de Excel. Usa «Copiar» o el CSV.');return}
+  try{await needXLSX()}catch(e){toast('No se pudo cargar el generador de Excel. Usa «Copiar» o el CSV.');return}
   try{const data=XLSX.write(hkWorkbook(),{type:'array',bookType:'xlsx'});saveFile('housekeeping_'+(S.repAll?'todos':S.repMes)+'.xlsx',data,'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')}
   catch(er){toast('No se pudo generar el Excel. Usa «Copiar» o el CSV.')}
 }
@@ -669,7 +692,7 @@ async function undoRev(rid){
     await S.db.doc('revisiones/'+rid).delete()
   }catch(e){toast(errMsg(e))}
 }
-async function showPaths(ps){try{const us=await Promise.all(ps.map(loadPhoto));showImgs(us)}catch(e){toast('No se pudo cargar la foto')}}
+async function showPaths(ps){try{const us=await Promise.all(ps.map(p=>loadPhoto(p,true)));showImgs(us)}catch(e){toast('No se pudo cargar la foto')}}
 let lbList=[],lbI=0;
 function showImgs(l){lbList=l;lbI=0;lbShow()}
 function lbShow(){$('#lbimg').src=lbList[lbI];$('#lb').classList.add('on');$('#lbprev').style.visibility=$('#lbnext').style.visibility=lbList.length>1?'visible':'hidden'}
@@ -726,7 +749,7 @@ document.addEventListener('click',async e=>{
   if(a==='usepass'){S.auth={step:'pass',email:val('a_email').trim()};render();return}
   if(a==='passlogin'){t.disabled=true;const r=await sb.auth.signInWithPassword({email:val('a_email').trim().toLowerCase(),password:val('a_pass')});t.disabled=false;if(r.error)toast('Correo o contraseña incorrectos');return}
   if(a==='backlogin'){S.auth={step:'email',email:''};render();return}
-  if(a==='logout'){if(confirm('¿Cerrar sesión de '+(S.account?S.account.username:'')+'?'))await sb.auth.signOut();return}
+  if(a==='logout'){if(confirm('¿Cerrar sesión de '+(S.account?S.account.username:'')+'?')){try{await caches.delete(PHOTO_CACHE)}catch(e){}await sb.auth.signOut()}return}
   if(a==='backup'){try{saveFile('copia_auditorias_'+todayISO()+'.json',JSON.stringify(await exportAll(),null,1),'application/json')}catch(er){toast('No se pudo generar la copia')}return}
   if(a==='irLinea'){S.linea=d.l;S.tab='revision';render();window.scrollTo(0,0);return}
   if(a==='setLinea'){S.linea=d.l;render();return}
