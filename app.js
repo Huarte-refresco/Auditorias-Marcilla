@@ -339,6 +339,8 @@ function doRender(){
   hydrate()
 }
 /* Cuentas compartidas (p. ej. laboratorio): varias personas entran con el mismo correo y eligen su nombre */
+const planosDe=l=>(S.config.planos&&S.config.planos[l])||[];
+async function processPlano(file){const c=await readImage(file,1800);const t=await readImage(file,220);return{full:c.toDataURL('image/jpeg',.82),thumb:t.toDataURL('image/jpeg',.7)}}
 const miembrosDe=p=>(p&&S.config.miembros&&S.config.miembros[p.id])||[];
 const actorName=()=>{const p=me();if(!p)return '';return miembrosDe(p).length?(S.actor||''):p.nombre};
 function vQuienEres(p,ms){
@@ -405,6 +407,7 @@ function vRevision(){
   h+='<div class="chips">'+ls.map(l=>'<button class="'+(l===S.linea?'on':'')+'" data-act="setLinea" data-l="'+esc(l)+'">'+esc(l)+'</button>').join('')+'</div>';
   h+='<div class="row"><div class="grow"><select data-set="perF">'+['Todas','Semanal','Quincenal','Mensual'].map(x=>'<option '+(x===S.perF?'selected':'')+'>'+x+'</option>').join('')+'</select></div><div class="grow"><select data-set="off"><option value="0" '+(S.off===0?'selected':'')+'>Periodo actual</option><option value="-1" '+(S.off===-1?'selected':'')+'>Periodo anterior</option></select></div></div>';
   h+='<label class="inl"><input type="checkbox" data-set="soloPend" '+(S.soloPend?'checked':'')+'> Mostrar solo pendientes</label>';
+  {const pl=planosDe(S.linea);if(pl.length)h+='<div class="card"><div class="row"><b class="grow">🗺️ Plano · '+esc(S.linea)+'</b><button class="b sm" data-act="verPlano" data-l="'+esc(S.linea)+'">Ver en grande'+(pl.length>1?' ('+pl.length+')':'')+'</button></div><img data-ph="'+esc(thumbName(pl[0]))+'" data-act="verPlano" data-l="'+esc(S.linea)+'" alt="Plano" style="width:100%;max-height:150px;object-fit:cover;border-radius:8px;margin-top:8px;cursor:zoom-in"></div>'}
   h+='<div class="card"><div class="row"><b class="grow">'+esc(lineaLabel(S.linea))+'</b><span class="muted small">'+done+' de '+rows.length+' revisadas</span></div><div class="bar"><i style="width:'+pc+'%"></i></div></div>';
   if(!ca)h+='<div class="warnbox">Solo el personal de Calidad puede marcar las revisiones.</div>';
   if(!list.length)return h+empty(rows.length?'Todo revisado en este periodo ✔':'No hay puntos con esos filtros.');
@@ -607,7 +610,7 @@ function vAjustes(){
   h+='<h3>Copia de seguridad</h3><div class="card"><p class="muted small">Descarga todos los datos (menos las fotos) en un archivo. Conviene hacerlo cada semana o cada mes y guardarlo en SharePoint.</p><button class="b sm" data-act="backup">Descargar copia</button></div>';
   const ls=['Todas'].concat(lineasList());
   const pts=S.puntos.filter(x=>S.ajLinea==='Todas'||x.linea===S.ajLinea).sort(byId);
-  h+='<h3>Catálogo de puntos de vidrios ('+S.puntos.length+')</h3><div class="row"><div class="grow"><select data-set="ajLinea">'+ls.map(l=>'<option '+(l===S.ajLinea?'selected':'')+'>'+esc(l)+'</option>').join('')+'</select></div><button class="b pri sm" data-act="editPunto" data-id="">+ Nuevo punto</button></div>';
+  h+='<h3>Catálogo de puntos de vidrios ('+S.puntos.length+')</h3><div class="row"><div class="grow"><select data-set="ajLinea">'+ls.map(l=>'<option '+(l===S.ajLinea?'selected':'')+'>'+esc(l)+'</option>').join('')+'</select></div><button class="b sm" data-act="editPlanos">🗺️ Planos</button><button class="b pri sm" data-act="editPunto" data-id="">+ Nuevo punto</button></div>';
   h+=pts.map(x=>'<div class="card"><div class="row"><div class="grow"><span class="muted small">'+esc(x.id)+' · '+esc(x.equipo)+'</span><br>'+esc(x.rev)+'<br><span class="chip">'+esc(x.per)+'</span> '+(x.activo===false?'<span class="chip bad">Inactivo</span>':'')+' <span class="muted small">'+((x.fotos||[]).length)+' foto(s)</span></div><button class="b sm" data-act="editPunto" data-id="'+esc(x.id)+'">Editar</button></div></div>').join('');
   return h
 }
@@ -718,7 +721,7 @@ async function undoRev(rid){
 async function showPaths(ps){try{const us=await Promise.all(ps.map(p=>loadPhoto(p,true)));showImgs(us)}catch(e){toast('No se pudo cargar la foto')}}
 let lbList=[],lbI=0;
 function showImgs(l){lbList=l;lbI=0;lbShow()}
-function lbShow(){$('#lbimg').src=lbList[lbI];$('#lb').classList.add('on');$('#lbprev').style.visibility=$('#lbnext').style.visibility=lbList.length>1?'visible':'hidden'}
+function lbShow(){$('#lbimg').src=lbList[lbI];const lo=$('#lbopen');if(lo)lo.href=lbList[lbI];$('#lb').classList.add('on');$('#lbprev').style.visibility=$('#lbnext').style.visibility=lbList.length>1?'visible':'hidden'}
 $('#lbclose').onclick=()=>$('#lb').classList.remove('on');
 $('#lbprev').onclick=()=>{lbI=(lbI+lbList.length-1)%lbList.length;lbShow()};
 $('#lbnext').onclick=()=>{lbI=(lbI+1)%lbList.length;lbShow()};
@@ -746,6 +749,24 @@ function openPersona(id){
     const mie=val('f_mie').split('\n').map(x=>x.trim()).filter(Boolean),antes=miembrosDe(p).join('|');
     if(mie.join('|')!==antes){const cur=Object.assign({},S.config.miembros||{});if(mie.length)cur[pid]=mie;else delete cur[pid];await S.db.doc('config/general').set(Object.assign({},S.config,{miembros:cur}))}
   }})
+}
+function openPlanos(){
+  const ls=lineasList();
+  const row=l=>'<div class="row" style="margin:8px 0"><span class="grow"><b>'+esc(l)+'</b> · '+planosDe(l).length+' plano(s)</span><label class="b sm" style="margin:0;cursor:pointer;color:var(--ink)">+ Añadir<input type="file" accept="image/*" data-plano="'+esc(l)+'" style="display:none"></label>'+(planosDe(l).length?'<button class="b ghost sm" data-act="delPlano" data-l="'+esc(l)+'">Quitar</button>':'')+'</div>';
+  openSheet('Planos de las zonas',(ls.map(row).join('')||'<p class="muted">Primero crea los puntos de una zona.</p>')+'<p class="muted small">El plano se ve en la pestaña Vidrios de esa zona y se amplía al pulsarlo. Sube una imagen (JPG o PNG); si tienes el plano en PDF o Word, haz una captura.</p>',{noSave:true,wire:()=>{
+    document.querySelectorAll('input[data-plano]').forEach(inp=>inp.onchange=async()=>{
+      const f=inp.files&&inp.files[0];if(!f)return;const l=inp.dataset.plano;toast('Subiendo plano…');
+      try{const ph=await processPlano(f);const name='ref/plano_'+slug(l)+'_'+Date.now().toString(36)+'.jpg';
+        await putPhoto(name,ph.full);await putPhoto(thumbName(name),ph.thumb);
+        const cur=Object.assign({},S.config.planos||{});cur[l]=planosDe(l).concat([name]);
+        await S.db.doc('config/general').set(Object.assign({},S.config,{planos:cur}));closeSheet();toast('Plano añadido a '+l)
+      }catch(e){toast(errMsg(e))}
+    })
+  }})
+}
+async function quitarPlanos(l){
+  if(!confirm('¿Quitar los planos de '+l+'?'))return;
+  try{const cur=Object.assign({},S.config.planos||{});delete cur[l];await S.db.doc('config/general').set(Object.assign({},S.config,{planos:cur}));closeSheet();toast('Planos quitados')}catch(e){toast(errMsg(e))}
 }
 function openConfig(){
   const c=S.config;
@@ -807,6 +828,9 @@ document.addEventListener('click',async e=>{
   if(a==='editDepto'){openDepto(d.id);return}
   if(a==='editPersona'){openPersona(d.id);return}
   if(a==='editConfig'){openConfig();return}
+  if(a==='editPlanos'){openPlanos();return}
+  if(a==='delPlano'){quitarPlanos(d.l);return}
+  if(a==='verPlano'){const pl=planosDe(d.l);if(pl.length)showPaths(pl);return}
   if(a==='editPunto'){openPunto(d.id);return}
 });
 document.addEventListener('change',e=>{
