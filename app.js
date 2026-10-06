@@ -503,18 +503,30 @@ async function ensureRep(){
   catch(e){S.rep={key:key,loading:false,revs:[]};toast('No se pudo cargar el mes')}
   render()
 }
+/* Huecos de revisión de un mes: semanal = un hueco por cada lunes del mes, quincenal = 2 (1-15 y 16-fin), mensual = 1 */
+function slotsDelMes(per,mes){
+  const y=Number(mes.slice(0,4)),m=Number(mes.slice(5,7)),fin=new Date(y,m,0).getDate(),out=[];
+  if(per==='Semanal'){for(let d=1;d<=fin;d++){const dt=new Date(y,m-1,d);if(dt.getDay()===1)out.push(periodFor('Semanal',dt,0))}}
+  else if(per==='Quincenal'){out.push(periodFor('Quincenal',new Date(y,m-1,1),0),periodFor('Quincenal',new Date(y,m-1,16),0))}
+  else out.push(periodFor('Mensual',new Date(y,m-1,1),0));
+  return out
+}
 function hojaHTML(linea,mes,revs){
-  const pts=activos(linea).sort(byId),byP={};revs.filter(r=>r.linea===linea).forEach(r=>(byP[r.pid]=byP[r.pid]||[]).push(r));
+  const pts=activos(linea).sort(byId),byK={};revs.filter(r=>r.linea===linea).forEach(r=>{byK[r.pid+'_'+r.inicio]=r});
   const a=mes.split('-');
   let h='<table class="rep head"><tr class="head"><td rowspan="2" class="logo">REFRESCO<br>IBERIA</td><td>CONTROL VIDRIOS, ACRÍLICOS EN '+esc(lineaLabel(linea))+' (PRODUCCIÓN)</td><td>'+esc(S.config.edicion)+'</td></tr><tr class="head"><td>'+esc(lineaLabel(linea))+' &nbsp;&nbsp; FECHA: '+a[1]+'/'+a[0]+'</td><td>FIRMA APROBADO:<br><span style="font-weight:400">Responsable de Calidad</span><br><br></td></tr></table><br>';
   h+='<table class="rep"><thead><tr><th>FOTO</th><th>REVISIÓN</th><th>MATERIAL</th><th>CANTIDAD</th><th>PERIODO REVISIÓN</th><th>FECHA</th><th>OK</th><th>NO OK</th><th>ACP</th><th>FIRMA</th></tr></thead><tbody>';
   let cur=null;
   pts.forEach(pt=>{
     if(pt.equipo!==cur){cur=pt.equipo;h+='<tr class="gr"><td colspan="10">'+esc(cur)+'</td></tr>'}
-    const rs=(byP[pt.id]||[]).sort((x,y)=>x.inicio.localeCompare(y.inicio));
-    const ok=rs.filter(r=>r.resultado==='OK').length,no=rs.filter(r=>r.resultado==='NO OK');
     const th=(pt.fotos&&pt.fotos[0])?'ref/'+thumbName(pt.fotos[0]):'';
-    h+='<tr><td>'+(th?'<img data-ph="'+esc(th)+'" alt="">':'')+'</td><td>'+esc(pt.rev)+'</td><td>'+esc(pt.mat)+'</td><td>'+esc(pt.cant)+'</td><td class="c">'+esc(String(pt.per).toUpperCase())+'</td><td class="c">'+(rs.map(r=>fmtS(String(r.fecha).slice(0,10))).join('<br>')||'—')+'</td><td class="c okc">'+(ok?'✔ '+ok:'')+'</td><td class="c nokc">'+(no.length?'✖ '+no.length:'')+'</td><td class="c">'+no.map(r=>esc(r.parteId||'')).join('<br>')+'</td><td class="c">'+[...new Set(rs.map(r=>first(r.por)))].map(esc).join('<br>')+'</td></tr>'
+    const sl=slotsDelMes(pt.per||'Mensual',mes),n=sl.length;
+    sl.forEach((sp,i)=>{
+      const r=byK[pt.id+'_'+sp.inicio],ok=r&&r.resultado==='OK',no=r&&r.resultado==='NO OK';
+      const cab=i===0?'<td rowspan="'+n+'">'+(th?'<img data-ph="'+esc(th)+'" alt="">':'')+'</td><td rowspan="'+n+'">'+esc(pt.rev)+'</td><td rowspan="'+n+'">'+esc(pt.mat)+'</td><td rowspan="'+n+'">'+esc(pt.cant)+'</td><td class="c" rowspan="'+n+'">'+esc(String(pt.per).toUpperCase())+'</td>':'';
+      const per=pt.per==='Mensual'?'':'<br><span style="color:#777;font-size:9.5px">('+(pt.per==='Semanal'?'sem. ':'')+fmtS(sp.inicio)+'–'+fmtS(sp.limite)+')</span>';
+      h+='<tr>'+cab+'<td class="c">'+(r?fmtS(String(r.fecha).slice(0,10)):'')+per+'</td><td class="c okc">'+(ok?'✔':'')+'</td><td class="c nokc">'+(no?'✖':'')+'</td><td class="c">'+(no?esc(r.parteId||''):'')+'</td><td class="c">'+(r?esc(first(r.por)):'')+'</td></tr>'
+    })
   });
   return h+'</tbody></table>'
 }
