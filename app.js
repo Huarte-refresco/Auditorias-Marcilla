@@ -70,7 +70,8 @@ function dest(nombre,extraPersonaId){
 }
 const destParte=x=>dest(deptOf(x),x.resp);
 function destCalidad(){if(deptByName('Calidad'))return dest('Calidad');return{para:uniq(S.personas.filter(p=>p.rol==='Calidad'&&p.email).map(p=>p.email)),cc:[]}}
-const lineasList=()=>[...new Set(S.puntos.map(p=>p.linea))].sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}));
+const esLinea=l=>/^L\d+$/i.test(l);
+const lineasList=()=>[...new Set(S.puntos.map(p=>p.linea))].sort((a,b)=>(esLinea(a)!==esLinea(b))?(esLinea(a)?-1:1):a.localeCompare(b,undefined,{numeric:true}));
 const statOf=(pt,off)=>{const per=periodFor(pt.per||'Mensual',new Date(),off);const id=pt.id+'_'+per.inicio;return{per:per,id:id,rev:S.revs[id]||null}};
 const activos=l=>S.puntos.filter(p=>p.activo!==false&&(!l||p.linea===l));
 const isOverdue=x=>x.estado==='Abierto'&&x.fechaPrevista&&x.fechaPrevista<todayISO();
@@ -404,7 +405,7 @@ function vRevision(){
   const done=rows.filter(r=>r.st.rev).length,pc=rows.length?Math.round(100*done/rows.length):0;
   const list=S.soloPend?rows.filter(r=>!r.st.rev):rows;
   let h='<h2>Revisión de vidrios y acrílicos</h2>';
-  h+='<div class="chips">'+ls.map(l=>'<button class="'+(l===S.linea?'on':'')+'" data-act="setLinea" data-l="'+esc(l)+'">'+esc(l)+'</button>').join('')+'</div>';
+  h+=ls.length>8?'<label>Zona</label><select data-set="linea">'+ls.map(l=>'<option '+(l===S.linea?'selected':'')+'>'+esc(l)+'</option>').join('')+'</select>':'<div class="chips">'+ls.map(l=>'<button class="'+(l===S.linea?'on':'')+'" data-act="setLinea" data-l="'+esc(l)+'">'+esc(l)+'</button>').join('')+'</div>';
   h+='<div class="row"><div class="grow"><select data-set="perF">'+['Todas','Semanal','Quincenal','Mensual'].map(x=>'<option '+(x===S.perF?'selected':'')+'>'+x+'</option>').join('')+'</select></div><div class="grow"><select data-set="off"><option value="0" '+(S.off===0?'selected':'')+'>Periodo actual</option><option value="-1" '+(S.off===-1?'selected':'')+'>Periodo anterior</option></select></div></div>';
   h+='<label class="inl"><input type="checkbox" data-set="soloPend" '+(S.soloPend?'checked':'')+'> Mostrar solo pendientes</label>';
   {const pl=planosDe(S.linea);if(pl.length)h+='<div class="card"><div class="row"><b class="grow">🗺️ Plano · '+esc(S.linea)+'</b><button class="b sm" data-act="verPlano" data-l="'+esc(S.linea)+'">Ver en grande'+(pl.length>1?' ('+pl.length+')':'')+'</button></div><img data-ph="'+esc(thumbName(pl[0]))+'" data-act="verPlano" data-l="'+esc(S.linea)+'" alt="Plano" style="width:100%;max-height:150px;object-fit:cover;border-radius:8px;margin-top:8px;cursor:zoom-in"></div>'}
@@ -514,7 +515,7 @@ function slotsDelMes(per,mes){
 function hojaHTML(linea,mes,revs){
   const pts=activos(linea).sort(byId),byK={};revs.filter(r=>r.linea===linea).forEach(r=>{byK[r.pid+'_'+r.inicio]=r});
   const a=mes.split('-');
-  let h='<table class="rep head"><tr class="head"><td rowspan="2" class="logo">REFRESCO<br>IBERIA</td><td>CONTROL VIDRIOS, ACRÍLICOS EN '+esc(lineaLabel(linea))+' (PRODUCCIÓN)</td><td>'+esc(S.config.edicion)+'</td></tr><tr class="head"><td>'+esc(lineaLabel(linea))+' &nbsp;&nbsp; FECHA: '+a[1]+'/'+a[0]+'</td><td>FIRMA APROBADO:<br><span style="font-weight:400">Responsable de Calidad</span><br><br></td></tr></table><br>';
+  let h='<table class="rep head"><tr class="head"><td rowspan="2" class="logo">REFRESCO<br>IBERIA</td><td>'+(esLinea(linea)?'CONTROL VIDRIOS, ACRÍLICOS EN '+esc(lineaLabel(linea))+' (PRODUCCIÓN)':'REVISIÓN DE VIDRIOS Y ELEMENTOS QUEBRADIZOS EN PLANTA')+'</td><td>'+esc(S.config.edicion)+'</td></tr><tr class="head"><td>'+(esLinea(linea)?esc(lineaLabel(linea)):'ÁREA: '+esc(String(linea).toUpperCase()))+' &nbsp;&nbsp; FECHA: '+a[1]+'/'+a[0]+'</td><td>FIRMA APROBADO:<br><span style="font-weight:400">Responsable de Calidad</span><br><br></td></tr></table><br>';
   h+='<table class="rep"><thead><tr><th>FOTO</th><th>REVISIÓN</th><th>MATERIAL</th><th>CANTIDAD</th><th>PERIODO REVISIÓN</th><th>FECHA</th><th>OK</th><th>NO OK</th><th>ACP</th><th>FIRMA</th></tr></thead><tbody>';
   let cur=null;
   pts.forEach(pt=>{
@@ -791,7 +792,7 @@ function openPunto(id){
   const x=S.puntos.find(p=>p.id===id)||{linea:S.ajLinea!=='Todas'?S.ajLinea:(lineasList()[0]||'L8'),equipo:'',rev:'',mat:'',cant:'',per:'Mensual',activo:true,fotos:[]};
   openSheet(id?'Editar punto '+id:'Nuevo punto','<label>Línea / zona *</label><input id="f_lin" list="dl_lin" value="'+esc(x.linea)+'"><datalist id="dl_lin">'+lineasList().map(l=>'<option value="'+esc(l)+'">').join('')+'</datalist><label>Equipo / zona *</label><input id="f_eq" value="'+esc(x.equipo)+'"><label>Qué revisar *</label><textarea id="f_rev" rows="3">'+esc(x.rev)+'</textarea><label>Material</label><input id="f_mat" value="'+esc(x.mat)+'"><label>Cantidad / elementos</label><input id="f_cant" value="'+esc(x.cant)+'"><label>Periodicidad *</label><select id="f_per">'+['Semanal','Quincenal','Mensual'].map(r=>'<option '+(r===x.per?'selected':'')+'>'+r+'</option>').join('')+'</select><label class="inl"><input type="checkbox" id="f_act" '+(x.activo!==false?'checked':'')+'> Punto activo</label>'+photoField('f_foto','Añadir foto de referencia ('+(x.fotos||[]).length+' actuales)',false),{wire:()=>wirePhoto('f_foto',true),onSave:async()=>{
     const lin=val('f_lin').trim(),eq=val('f_eq').trim(),rev=val('f_rev').trim();if(!lin||!eq||!rev){toast('Línea, equipo y qué revisar son obligatorios');return false}
-    let pid=id;if(!pid){const nums=S.puntos.filter(p=>p.linea===lin).map(p=>Number(String(p.id).split('-').pop())||0);pid='V-'+lin+'-'+String((nums.length?Math.max.apply(null,nums):0)+1).padStart(3,'0')}
+    let pid=id;if(!pid){const nums=S.puntos.filter(p=>p.linea===lin).map(p=>Number(String(p.id).split('-').pop())||0);const ex=S.puntos.find(p=>p.linea===lin);const pre=ex?String(ex.id).replace(/-\d+$/,''):'V-'+slug(lin).toUpperCase();pid=pre+'-'+String((nums.length?Math.max.apply(null,nums):0)+1).padStart(3,'0')}
     const fotos=(x.fotos||[]).slice();if(photos.f_foto){const nmf=pid+'_'+(fotos.length+1)+'.jpg';await putPhoto('ref/'+nmf,photos.f_foto.full);await putPhoto('ref/'+thumbName(nmf),photos.f_foto.thumb);fotos.push(nmf)}
     await S.db.doc('puntos/'+pid).set({linea:lin,equipo:eq,rev:rev,mat:val('f_mat').trim(),cant:val('f_cant').trim(),per:val('f_per'),activo:$('#f_act').checked,fotos:fotos,nota:x.nota||''})
   }})
