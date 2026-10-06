@@ -46,7 +46,7 @@ const S={db:null,auth:{step:'email',email:''},started:false,account:null,emails:
  loaded:{},persona:null,tab:'inicio',linea:null,perF:'Todas',soloPend:true,off:0,
  fEstado:'Abierto',fResp:null,fOrigen:'Todos',fDpto:'Todos',fMes:'',focus:null,
  repTab:'hoja',repLinea:null,repMes:todayISO().slice(0,7),repAll:false,repOpen:false,rep:{key:'',revs:[],loading:false},
- ajLinea:'Todas',nombreSugerido:''};
+ ajLinea:'Todas',nombreSugerido:'',actor:null};
 const photos={};
 const me=()=>S.personas.find(p=>S.emails.includes(String(p.email||'').toLowerCase())||p.id===S.persona)||null;
 const isCal=()=>{const p=me();return !!p&&p.rol==='Calidad'};
@@ -312,6 +312,7 @@ function startData(){
 }
 (async function init(){
   if(!window.supabase||!CFG.supabaseUrl||/REEMPLAZAR/i.test(CFG.supabaseUrl)||/REEMPLAZAR/i.test(CFG.supabaseKey||'')){S.fatal={msg:'Falta configurar config.js (dirección del proyecto y clave pública de Supabase).'};render();return}
+  try{S.actor=sessionStorage.getItem('aud_actor')||null}catch(e){}
   sb=supabase.createClient(CFG.supabaseUrl,CFG.supabaseKey,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:false}});
   sb.auth.onAuthStateChange((ev,sess)=>{
     if(ev==='SIGNED_OUT'){location.reload();return}
@@ -329,6 +330,7 @@ function doRender(){
   if(!S.db||!(S.loaded.personas&&S.loaded.deptos&&S.loaded.puntos&&S.loaded.revs&&S.loaded.partes&&S.loaded.config)){app.innerHTML='<div class="empty">Cargando…</div>';return}
   const p=me();S.isAdmin=!!(p&&p.admin);
   if(!p){app.innerHTML=vNoAccess();return}
+  const ms=miembrosDe(p);if(ms.length&&!ms.includes(S.actor)){app.innerHTML=vQuienEres(p,ms);return}
   if(S.tab==='ajustes'&&!S.isAdmin)S.tab='inicio';
   if(S.tab==='hk'&&!canAudit())S.tab='inicio';
   if(S.tab==='informe')ensureRep();
@@ -336,7 +338,28 @@ function doRender(){
   app.innerHTML=hdr()+'<main>'+V[S.tab]()+'</main>'+nav();
   hydrate()
 }
-function hdr(){const p=me();return '<header class="top"><div><b>Auditorías de planta</b><small>Refresco Iberia · Marcilla</small></div><button class="who" data-act="logout">'+(p?esc(p.nombre)+' ▾':'Entrar ▾')+'</button></header>'}
+/* Cuentas compartidas (p. ej. laboratorio): varias personas entran con el mismo correo y eligen su nombre */
+const miembrosDe=p=>(p&&S.config.miembros&&S.config.miembros[p.id])||[];
+const actorName=()=>{const p=me();if(!p)return '';return miembrosDe(p).length?(S.actor||''):p.nombre};
+function vQuienEres(p,ms){
+  let last='';try{last=localStorage.getItem('aud_actor_last')||''}catch(e){}
+  return '<div class="login"><div class="card"><h2>¿Quién eres?</h2><p class="muted">Has entrado con la cuenta compartida <b>'+esc(p.nombre)+'</b>. Elige tu nombre para que quede registrado en tus revisiones.</p><label>Mi nombre</label><select id="actorSel"><option value="">—</option>'+ms.map(n=>'<option '+(n===last?'selected':'')+'>'+esc(n)+'</option>').join('')+'</select><p style="margin-top:14px"><button class="b pri" style="width:100%" data-act="setActor">Continuar</button></p><p><button class="lnk small" data-act="logout">Cerrar sesión</button></p></div></div>'
+}
+async function doLogout(){
+  if(!confirm('¿Cerrar sesión de '+(S.account?S.account.username:'')+'?'))return;
+  try{await caches.delete(PHOTO_CACHE)}catch(e){}
+  try{sessionStorage.removeItem('aud_actor')}catch(e){}
+  S.actor=null;await sb.auth.signOut()
+}
+function openUserMenu(){
+  const p=me();if(!p){doLogout();return}
+  const shared=miembrosDe(p).length>0;
+  openSheet('Sesión','<p class="kv">Cuenta: <b>'+esc(p.nombre)+'</b><br><span class="muted">'+esc(S.account?S.account.username:'')+'</span></p>'+(shared?'<p class="kv">Estás registrando como: <b>'+esc(S.actor||'—')+'</b></p><p><button class="b pri" id="m_chg">Cambiar de persona</button></p>':'')+'<p><button class="b ghost" id="m_out">Cerrar sesión</button></p>',{noSave:true,wire:()=>{
+    const c=$('#m_chg');if(c)c.onclick=()=>{S.actor=null;try{sessionStorage.removeItem('aud_actor')}catch(e){}closeSheet();render()};
+    $('#m_out').onclick=()=>{closeSheet();doLogout()}
+  }})
+}
+function hdr(){const p=me();return '<header class="top"><div><b>Auditorías de planta</b><small>Refresco Iberia · Marcilla</small></div><button class="who" data-act="userMenu">'+(p?esc(actorName()||p.nombre)+' ▾':'Entrar ▾')+'</button></header>'}
 function nav(){
   const tabs=[['inicio','🏠','Inicio'],['revision','🪟','Vidrios']];
   if(canAudit())tabs.push(['hk','📝','Housekeeping']);
@@ -356,7 +379,7 @@ function vInicio(){
   const abiertos=S.partes.filter(x=>x.estado==='Abierto'),venc=abiertos.filter(isOverdue),porVal=S.partes.filter(x=>x.estado==='Realizado');
   const mis=abiertos.filter(esMio);
   let pend=0,vp=0;lineasList().forEach(l=>{const g=progress(l);pend+=g.total-g.done;vp+=vencidasPrev(l)});
-  let h='<h2>Hola, '+esc(first(p.nombre))+'</h2><p class="muted">'+esc(p.rol)+(p.departamento?' · '+esc(p.departamento):'')+'</p>';
+  let h='<h2>Hola, '+esc(first(actorName()||p.nombre))+'</h2><p class="muted">'+esc(p.rol)+(p.departamento?' · '+esc(p.departamento):'')+'</p>';
   h+='<div class="kpis"><div class="kpi warn"><b>'+abiertos.length+'</b><span>Incidencias abiertas</span></div><div class="kpi bad"><b>'+venc.length+'</b><span>Fuera de plazo</span></div><div class="kpi"><b>'+porVal.length+'</b><span>Por validar (calidad)</span></div>'+(cal||S.isAdmin?'<div class="kpi warn"><b>'+pend+'</b><span>Revisiones de vidrios pendientes</span></div><div class="kpi bad"><b>'+vp+'</b><span>Sin hacer del periodo anterior</span></div>':'')+'</div>';
   if(cal||S.isAdmin){
     h+='<h3>Revisión de vidrios (periodo actual)</h3>';
@@ -414,7 +437,7 @@ function openHK(){
     if(!v.fecha||!v.ncm||!v.det||!v.dpto||!v.resumen||!v.causas||!v.acc||!v.prev||!ph){toast('Rellena todos los campos obligatorios y añade la foto');return false}
     const fid=uid(),id='HK'+v.fecha.slice(2).replace(/-/g,'')+'-'+Math.random().toString(36).slice(2,5).toUpperCase();
     await savePhotoPair('inc',fid,ph);
-    const parte={origen:'Housekeeping',fecha:v.fecha,linea:'HK',zona:v.det,elemento:v.ncm,ncm:v.ncm,seccionDeteccion:v.det,dpto:v.dpto,resp:v.resp||'',resumen:v.resumen,causas:v.causas,accion:v.acc,creadoPor:p?p.nombre:'',fotoIni:fid,fechaPrevista:v.prev,estado:'Abierto',avisoEnviado:false};
+    const parte={origen:'Housekeeping',fecha:v.fecha,linea:'HK',zona:v.det,elemento:v.ncm,ncm:v.ncm,seccionDeteccion:v.det,dpto:v.dpto,resp:v.resp||'',resumen:v.resumen,causas:v.causas,accion:v.acc,creadoPor:actorName(),fotoIni:fid,fechaPrevista:v.prev,estado:'Abierto',avisoEnviado:false};
     await S.db.doc('partes/'+id).set(parte);
     return{after:()=>{toast('No conformidad '+id+' creada');notify(mailNuevoParte(Object.assign({id:id},parte)))}}
   }})
@@ -578,7 +601,7 @@ function vAjustes(){
   h+=S.deptos.length?S.deptos.slice().sort((a,b)=>a.nombre.localeCompare(b.nombre)).map(d=>'<div class="row" style="margin:8px 0"><div class="grow"><b>'+esc(d.nombre)+'</b><br><span class="muted small">PARA: '+esc(nm(d.para).join(', ')||'—')+'<br>CC: '+esc(nm(d.cc).join(', ')||'—')+'</span></div><button class="b sm" data-act="editDepto" data-id="'+esc(d.id)+'">Editar</button></div>').join(''):'<p class="muted">Aún no hay departamentos.</p>';
   h+='<p><button class="b pri sm" data-act="editDepto" data-id="">+ Añadir departamento</button></p></div>';
   h+='<h3>Personas</h3><div class="card">';
-  h+=S.personas.length?S.personas.map(p=>'<div class="row" style="margin:6px 0"><div class="grow"><b>'+esc(p.nombre)+'</b> <span class="chip">'+esc(p.rol)+'</span><br><span class="muted small">'+esc(p.email||'sin correo')+(p.departamento?' · '+esc(p.departamento):'')+'</span></div><button class="b sm" data-act="editPersona" data-id="'+esc(p.id)+'">Editar</button></div>').join(''):'<p class="muted">Aún no hay personas.</p>';
+  h+=S.personas.length?S.personas.map(p=>'<div class="row" style="margin:6px 0"><div class="grow"><b>'+esc(p.nombre)+'</b> <span class="chip">'+esc(p.rol)+'</span><br><span class="muted small">'+esc(p.email||'sin correo') +(p.departamento?' · '+esc(p.departamento):'')+(miembrosDe(p).length?' · cuenta compartida ('+miembrosDe(p).length+')':'')+'</span></div><button class="b sm" data-act="editPersona" data-id="'+esc(p.id)+'">Editar</button></div>').join(''):'<p class="muted">Aún no hay personas.</p>';
   h+='<p><button class="b pri sm" data-act="editPersona" data-id="">+ Añadir persona</button></p></div>';
   h+='<h3>Parámetros</h3><div class="card"><div class="kv">Departamento por defecto de un NO OK de vidrios: <b>'+esc(dptoDefault()||'—')+'</b><br>Plazo por defecto: <b>'+S.config.plazoDias+' días</b><br>Texto de edición en la hoja: <b>'+esc(S.config.edicion)+'</b><br>Control vigente desde: <b>'+fmtD(S.config.desde)+'</b><br>Secciones de detección (Housekeeping): <b>'+esc(secciones().join(', '))+'</b><br>Housekeeping requiere Apto de calidad: <b>'+(S.config.validarHK?'Sí':'No (se cierra al pulsar Hecho)')+'</b></div><p><button class="b sm" data-act="editConfig">Cambiar</button></p></div>';
   h+='<h3>Copia de seguridad</h3><div class="card"><p class="muted small">Descarga todos los datos (menos las fotos) en un archivo. Conviene hacerlo cada semana o cada mes y guardarlo en SharePoint.</p><button class="b sm" data-act="backup">Descargar copia</button></div>';
@@ -617,7 +640,7 @@ function openMail(m){
     $('#mailcopy').onclick=async()=>{try{await navigator.clipboard.writeText(m.body);toast('Mensaje copiado')}catch(e){toast('No se pudo copiar')}};
   }})
 }
-const miNombre=()=>{const p=me();return p?p.nombre:''};
+const miNombre=()=>actorName();
 function mailNuevoParte(x){
   const d=destParte(x),hk=origenOf(x)==='Housekeeping';
   const cuerpo=hk
@@ -639,7 +662,7 @@ function mailDigest(nombre){
 /* ---- acciones de negocio ---- */
 async function doOK(pt,st){
   const p=me();
-  await S.db.doc('revisiones/'+st.id).set({pid:pt.id,linea:pt.linea,equipo:pt.equipo,per:pt.per,inicio:st.per.inicio,limite:st.per.limite,resultado:'OK',fecha:nowISO(),por:p.nombre,porId:p.id})
+  await S.db.doc('revisiones/'+st.id).set({pid:pt.id,linea:pt.linea,equipo:pt.equipo,per:pt.per,inicio:st.per.inicio,limite:st.per.limite,resultado:'OK',fecha:nowISO(),por:actorName(),porId:p.id})
 }
 function openNoOk(pt,st){
   const prev=iso(addDays(new Date(),Number(S.config.plazoDias)||14));
@@ -648,9 +671,9 @@ function openNoOk(pt,st){
     if(!accion||!elem||!dpto||!pv||!ph){toast('Rellena todos los campos y añade la foto');return false}
     const fid=uid(),id='V'+todayISO().slice(2).replace(/-/g,'')+'-'+Math.random().toString(36).slice(2,5).toUpperCase();
     await savePhotoPair('inc',fid,ph);
-    const parte={origen:'Vidrios',fecha:todayISO(),linea:pt.linea,zona:pt.linea+' · '+pt.equipo,elemento:elem,accion:accion,pid:pt.id,rid:st.id,dpto:dpto,resp:resp||'',creadoPor:p?p.nombre:'',fotoIni:fid,fechaPrevista:pv,estado:'Abierto',avisoEnviado:false};
+    const parte={origen:'Vidrios',fecha:todayISO(),linea:pt.linea,zona:pt.linea+' · '+pt.equipo,elemento:elem,accion:accion,pid:pt.id,rid:st.id,dpto:dpto,resp:resp||'',creadoPor:actorName(),fotoIni:fid,fechaPrevista:pv,estado:'Abierto',avisoEnviado:false};
     await S.db.doc('partes/'+id).set(parte);
-    await S.db.doc('revisiones/'+st.id).set({pid:pt.id,linea:pt.linea,equipo:pt.equipo,per:pt.per,inicio:st.per.inicio,limite:st.per.limite,resultado:'NO OK',fecha:nowISO(),por:p?p.nombre:'',porId:p?p.id:'',parteId:id,obs:accion});
+    await S.db.doc('revisiones/'+st.id).set({pid:pt.id,linea:pt.linea,equipo:pt.equipo,per:pt.per,inicio:st.per.inicio,limite:st.per.limite,resultado:'NO OK',fecha:nowISO(),por:actorName(),porId:p?p.id:'',parteId:id,obs:accion});
     return{after:()=>{toast('Parte '+id+' creado');notify(mailNuevoParte(Object.assign({id:id},parte)))}}
   }})
 }
@@ -658,13 +681,13 @@ function openHecho(x){
   const p=me(),hk=origenOf(x)==='Housekeeping';
   const body=hk
    ?'<div class="kv"><b>'+esc(x.zona+' — NCm/NCM '+(x.ncm||x.elemento))+'</b><br>'+esc(x.accion)+'</div><label>Acción realizada</label><textarea id="f_real" rows="2"></textarea><label>Comentarios</label><input id="f_com">'+photoField('f_foto','Foto de evidencia',true)
-   :'<div class="kv"><b>'+esc(x.zona+' — '+x.elemento)+'</b><br>'+esc(x.accion)+'</div><label>Acción realizada *</label><textarea id="f_real" rows="3"></textarea><label>Operario *</label><input id="f_oper" value="'+esc(p?p.nombre:'')+'"><label>Limpieza de zona *</label><select id="f_limp"><option value="">—</option><option value="1">Sí</option><option value="0">No</option></select><label>Ausencia de materiales / herramientas *</label><select id="f_mat"><option value="">—</option><option value="1">Sí, no queda nada</option><option value="0">No</option></select><label>Comentarios</label><input id="f_com">'+photoField('f_foto','Foto del trabajo terminado',true);
+   :'<div class="kv"><b>'+esc(x.zona+' — '+x.elemento)+'</b><br>'+esc(x.accion)+'</div><label>Acción realizada *</label><textarea id="f_real" rows="3"></textarea><label>Operario *</label><input id="f_oper" value="'+esc(actorName())+'"><label>Limpieza de zona *</label><select id="f_limp"><option value="">—</option><option value="1">Sí</option><option value="0">No</option></select><label>Ausencia de materiales / herramientas *</label><select id="f_mat"><option value="">—</option><option value="1">Sí, no queda nada</option><option value="0">No</option></select><label>Comentarios</label><input id="f_com">'+photoField('f_foto','Foto del trabajo terminado',true);
   openSheet('Incidencia '+x.id+' · Hecho',body,{label:'Marcar como hecho',wire:()=>wirePhoto('f_foto'),onSave:async()=>{
     const real=val('f_real').trim(),ph=photos.f_foto;
     let upd;
     if(hk){
       if(!ph){toast('Añade la foto de evidencia');return false}
-      upd={accionRealizada:real,operario:p?p.nombre:'',comentarios:val('f_com').trim()};
+      upd={accionRealizada:real,operario:actorName(),comentarios:val('f_com').trim()};
     }else{
       const op=val('f_oper').trim(),l=val('f_limp'),m=val('f_mat');
       if(!real||!op||!l||!m||!ph){toast('Rellena todos los campos y añade la foto');return false}
@@ -715,18 +738,20 @@ function openDepto(id){
 }
 function openPersona(id){
   const p=personaById(id)||{nombre:S.personas.length?'':S.nombreSugerido,email:'',rol:'Calidad',departamento:'',admin:false};
-  openSheet(id?'Editar persona':'Nueva persona','<label>Nombre *</label><input id="f_nom" value="'+esc(p.nombre)+'"><label>Correo de la empresa (con el que inicia sesión) *</label><input id="f_mail" type="email" value="'+esc(p.email)+'" '+(id?'readonly':'')+'><label>Rol *</label><select id="f_rol">'+['Calidad','Mantenimiento','Responsable'].map(r=>'<option '+(r===p.rol?'selected':'')+'>'+r+'</option>').join('')+'</select><p class="muted small">Calidad: audita y valida. Mantenimiento y Responsable: reciben y cierran incidencias de su departamento.</p><label>Departamento</label><input id="f_dep" list="dl_dep" value="'+esc(p.departamento)+'"><datalist id="dl_dep">'+S.deptos.map(d=>'<option value="'+esc(d.nombre)+'">').join('')+'</datalist><label class="inl"><input type="checkbox" id="f_adm" '+(p.admin?'checked':'')+'> Administrador de la app (Ajustes)</label>'+(id?'<p><button class="b ghost sm" id="f_del">Eliminar persona</button></p>':''),{wire:()=>{const d=$('#f_del');if(d)d.onclick=async()=>{if(confirm('¿Eliminar a '+p.nombre+'?')){try{await S.db.doc('personas/'+id).delete();closeSheet()}catch(e){toast(errMsg(e))}}}},onSave:async()=>{
+  openSheet(id?'Editar persona':'Nueva persona','<label>Nombre *</label><input id="f_nom" value="'+esc(p.nombre)+'"><label>Correo de la empresa (con el que inicia sesión) *</label><input id="f_mail" type="email" value="'+esc(p.email)+'" '+(id?'readonly':'')+'><label>Rol *</label><select id="f_rol">'+['Calidad','Mantenimiento','Responsable'].map(r=>'<option '+(r===p.rol?'selected':'')+'>'+r+'</option>').join('')+'</select><p class="muted small">Calidad: audita y valida. Mantenimiento y Responsable: reciben y cierran incidencias de su departamento.</p><label>Departamento</label><input id="f_dep" list="dl_dep" value="'+esc(p.departamento)+'"><datalist id="dl_dep">'+S.deptos.map(d=>'<option value="'+esc(d.nombre)+'">').join('')+'</datalist><label class="inl"><input type="checkbox" id="f_adm" '+(p.admin?'checked':'')+'> Administrador de la app (Ajustes)</label><label>Cuenta compartida: personas que la usan (una por línea)</label><textarea id="f_mie" rows="4" placeholder="Déjalo vacío si esta cuenta es de una sola persona">'+esc(miembrosDe(p).join('\n'))+'</textarea><p class="muted small">Si pones nombres, al entrar con este correo saldrá un desplegable para elegir quién eres, y la revisión quedará a su nombre.</p>'+(id?'<p><button class="b ghost sm" id="f_del">Eliminar persona</button></p>':''),{wire:()=>{const d=$('#f_del');if(d)d.onclick=async()=>{if(confirm('¿Eliminar a '+p.nombre+'?')){try{await S.db.doc('personas/'+id).delete();closeSheet()}catch(e){toast(errMsg(e))}}}},onSave:async()=>{
     const n=val('f_nom').trim(),m=val('f_mail').trim().toLowerCase(),dep=val('f_dep').trim();if(!n||!/@/.test(m)){toast('Nombre y correo válido son obligatorios');return false}
     const pid=id||m;
     await S.db.doc('personas/'+pid).set({nombre:n,email:m,rol:val('f_rol'),departamento:dep,admin:$('#f_adm').checked});
-    if(dep&&!deptByName(dep))await S.db.doc('departamentos/'+slug(dep)).set({nombre:dep,para:[m],cc:[]})
+    if(dep&&!deptByName(dep))await S.db.doc('departamentos/'+slug(dep)).set({nombre:dep,para:[m],cc:[]});
+    const mie=val('f_mie').split('\n').map(x=>x.trim()).filter(Boolean),antes=miembrosDe(p).join('|');
+    if(mie.join('|')!==antes){const cur=Object.assign({},S.config.miembros||{});if(mie.length)cur[pid]=mie;else delete cur[pid];await S.db.doc('config/general').set(Object.assign({},S.config,{miembros:cur}))}
   }})
 }
 function openConfig(){
   const c=S.config;
   openSheet('Parámetros','<label>Departamento por defecto de un NO OK (vidrios)</label><select id="f_dd">'+optsDeptos(dptoDefault())+'</select><label>Plazo por defecto (días)</label><input id="f_pl" type="number" min="1" value="'+c.plazoDias+'"><label>Texto de edición en la hoja</label><input id="f_ed" value="'+esc(c.edicion)+'"><label>Control vigente desde</label><input id="f_ds" type="date" value="'+esc(c.desde)+'"><p class="muted small">Las revisiones anteriores a esta fecha no se marcan como sin hacer.</p><label>Secciones de detección de Housekeeping (una por línea)</label><textarea id="f_sec" rows="5">'+esc(secciones().join('\n'))+'</textarea><label class="inl"><input type="checkbox" id="f_vhk" '+(c.validarHK?'checked':'')+'> Housekeeping requiere Apto de calidad (si no, se cierra al pulsar Hecho)</label>',{onSave:async()=>{
     const sec=val('f_sec').split('\n').map(s=>s.trim()).filter(Boolean);
-    await S.db.doc('config/general').set({respDefault:c.respDefault||'',dptoDefault:val('f_dd'),plazoDias:Number(val('f_pl'))||14,edicion:val('f_ed').trim()||'Edición 1',desde:val('f_ds')||todayISO(),seccionesDeteccion:sec.length?sec:DEFAULT_SECC,validarHK:$('#f_vhk').checked})
+    await S.db.doc('config/general').set(Object.assign({},S.config,{respDefault:c.respDefault||'',dptoDefault:val('f_dd'),plazoDias:Number(val('f_pl'))||14,edicion:val('f_ed').trim()||'Edición 1',desde:val('f_ds')||todayISO(),seccionesDeteccion:sec.length?sec:DEFAULT_SECC,validarHK:$('#f_vhk').checked}))
   }})
 }
 function openPunto(id){
@@ -749,7 +774,9 @@ document.addEventListener('click',async e=>{
   if(a==='usepass'){S.auth={step:'pass',email:val('a_email').trim()};render();return}
   if(a==='passlogin'){t.disabled=true;const r=await sb.auth.signInWithPassword({email:val('a_email').trim().toLowerCase(),password:val('a_pass')});t.disabled=false;if(r.error)toast('Correo o contraseña incorrectos');return}
   if(a==='backlogin'){S.auth={step:'email',email:''};render();return}
-  if(a==='logout'){if(confirm('¿Cerrar sesión de '+(S.account?S.account.username:'')+'?')){try{await caches.delete(PHOTO_CACHE)}catch(e){}await sb.auth.signOut()}return}
+  if(a==='logout'){doLogout();return}
+  if(a==='userMenu'){openUserMenu();return}
+  if(a==='setActor'){const v=val('actorSel');if(!v){toast('Elige tu nombre');return}S.actor=v;try{sessionStorage.setItem('aud_actor',v);localStorage.setItem('aud_actor_last',v)}catch(e){}render();return}
   if(a==='backup'){try{saveFile('copia_auditorias_'+todayISO()+'.json',JSON.stringify(await exportAll(),null,1),'application/json')}catch(er){toast('No se pudo generar la copia')}return}
   if(a==='irLinea'){S.linea=d.l;S.tab='revision';render();window.scrollTo(0,0);return}
   if(a==='setLinea'){S.linea=d.l;render();return}
