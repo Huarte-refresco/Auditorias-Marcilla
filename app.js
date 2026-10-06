@@ -291,6 +291,9 @@ async function notify(m){
 }
 
 /* ====================== arranque y acceso ====================== */
+function applyHash(){const m=/^#parte=(.+)$/.exec(location.hash||'');if(m){S.focus=decodeURIComponent(m[1]);S.tab='partes'}}
+function clearHash(){try{if(location.hash)history.replaceState(null,'',location.pathname+location.search)}catch(e){}}
+window.addEventListener('hashchange',()=>{applyHash();render()});
 let rq=0;function render(){cancelAnimationFrame(rq);rq=requestAnimationFrame(doRender)}
 function begin(sess){
   if(S.started)return;S.started=true;
@@ -314,6 +317,7 @@ function startData(){
 (async function init(){
   if(!window.supabase||!CFG.supabaseUrl||/REEMPLAZAR/i.test(CFG.supabaseUrl)||/REEMPLAZAR/i.test(CFG.supabaseKey||'')){S.fatal={msg:'Falta configurar config.js (dirección del proyecto y clave pública de Supabase).'};render();return}
   try{S.actor=sessionStorage.getItem('aud_actor')||null}catch(e){}
+  applyHash();
   sb=supabase.createClient(CFG.supabaseUrl,CFG.supabaseKey,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:false}});
   sb.auth.onAuthStateChange((ev,sess)=>{
     if(ev==='SIGNED_OUT'){location.reload();return}
@@ -656,23 +660,25 @@ function openMail(m){
     $('#mailcopy').onclick=async()=>{try{await navigator.clipboard.writeText(m.body);toast('Mensaje copiado')}catch(e){toast('No se pudo copiar')}};
   }})
 }
+const appLink=id=>{const base=String(CFG.appUrl||(location.origin+location.pathname)).split('#')[0];return base+(id?'#parte='+encodeURIComponent(id):'')};
+const linkTxt=id=>'\n\n'+(id?'Pulsa aquí para ver la incidencia: ':'Pulsa aquí para abrir la app: ')+appLink(id);
 const miNombre=()=>actorName();
 function mailNuevoParte(x){
   const d=destParte(x),hk=origenOf(x)==='Housekeeping';
   const cuerpo=hk
    ?'Calidad ha abierto una no conformidad de Housekeeping que debe resolver '+deptOf(x)+':\n\nNº: '+x.id+'\nNCm/NCM: '+(x.ncm||x.elemento)+'\nSección de detección: '+x.zona+'\nResumen: '+x.resumen+'\nAnálisis de causas: '+x.causas+'\nAcciones correctivas/preventivas: '+x.accion+'\nFecha prevista: '+fmtD(x.fechaPrevista)
    :'Calidad ha detectado una no conformidad en la revisión de vidrios y acrílicos que debe resolver '+deptOf(x)+':\n\nParte: '+x.id+'\nZona: '+x.zona+'\nElemento: '+x.elemento+'\nAcción a realizar: '+x.accion+'\nFecha prevista: '+fmtD(x.fechaPrevista);
-  return{srv:{tipo:'nueva',id:x.id},to:d.para,cc:d.cc,subject:'['+origenOf(x)+'] Nueva incidencia '+x.id+' · '+x.zona,body:'Hola,\n\n'+cuerpo+'\n\nPor favor, entra en la app de Auditorías de planta, realiza la acción y márcala como "Hecho" con una foto.\n\nGracias,\n'+miNombre(),
+  return{srv:{tipo:'nueva',id:x.id},to:d.para,cc:d.cc,subject:'['+origenOf(x)+'] Nueva incidencia '+x.id+' · '+x.zona,body:'Hola,\n\n'+cuerpo+'\n\nPor favor, entra en la app de Auditorías de planta, realiza la acción y márcala como "Hecho" con una foto.'+linkTxt(x.id)+'\n\nGracias,\n'+miNombre(),
     onSent:()=>S.db.doc('partes/'+x.id).update({avisoEnviado:true}).catch(()=>{})}
 }
 function mailRealizado(x){
   const d=destCalidad();
-  return{srv:{tipo:'realizada',id:x.id},to:d.para,cc:d.cc,subject:'['+origenOf(x)+'] Incidencia '+x.id+' realizada · pendiente de validar',body:'Hola,\n\n'+deptOf(x)+' ha realizado la incidencia '+x.id+' ('+x.zona+' — '+x.elemento+').\n\nAcción realizada: '+(x.accionRealizada||'—')+'\nHecho por: '+x.operario+'\n\nPor favor, comprueba la foto y da el "Apto calidad" en la app de Auditorías de planta.\n\nGracias,\n'+miNombre()}
+  return{srv:{tipo:'realizada',id:x.id},to:d.para,cc:d.cc,subject:'['+origenOf(x)+'] Incidencia '+x.id+' realizada · pendiente de validar',body:'Hola,\n\n'+deptOf(x)+' ha realizado la incidencia '+x.id+' ('+x.zona+' — '+x.elemento+').\n\nAcción realizada: '+(x.accionRealizada||'—')+'\nHecho por: '+x.operario+'\n\nPor favor, comprueba la foto y da el "Apto calidad" en la app de Auditorías de planta.'+linkTxt(x.id)+'\n\nGracias,\n'+miNombre()}
 }
 function mailDigest(nombre){
   const d=dest(nombre);const l=S.partes.filter(x=>x.estado==='Abierto'&&deptOf(x)===nombre);
   const lines=l.slice(0,12).map(x=>'· '+x.id+' ['+origenOf(x)+'] '+x.zona+' / '+x.elemento+': '+x.accion+' (prevista '+fmtD(x.fechaPrevista)+(isOverdue(x)?' · FUERA DE PLAZO':'')+')').join('\n');
-  return{srv:{tipo:'resumen',dpto:nombre},to:d.para,cc:d.cc,subject:'['+nombre+'] Tenéis '+l.length+' incidencia(s) abierta(s)',body:'Hola,\n\nEstas son las incidencias abiertas de '+nombre+' en las auditorías de planta:\n\n'+lines+(l.length>12?'\n… y '+(l.length-12)+' más.':'')+'\n\nPor favor, entrad en la app de Auditorías de planta y marcadlas como "Hecho" con foto cuando estén resueltas.\n\nGracias,\n'+miNombre()}
+  return{srv:{tipo:'resumen',dpto:nombre},to:d.para,cc:d.cc,subject:'['+nombre+'] Tenéis '+l.length+' incidencia(s) abierta(s)',body:'Hola,\n\nEstas son las incidencias abiertas de '+nombre+' en las auditorías de planta:\n\n'+lines+(l.length>12?'\n… y '+(l.length-12)+' más.':'')+'\n\nPor favor, entrad en la app de Auditorías de planta y marcadlas como "Hecho" con foto cuando estén resueltas.'+linkTxt()+'\n\nGracias,\n'+miNombre()}
 }
 
 /* ---- acciones de negocio ---- */
@@ -721,7 +727,7 @@ function openApto(x,ok){
     const c=val('f_apto').trim();if(!ok&&!c){toast('Indica el motivo');return false}
     if(ok)await S.db.doc('partes/'+x.id).update({estado:'Cerrado',aptoPor:miNombre(),aptoFecha:todayISO(),aptoComentario:c});
     else await S.db.doc('partes/'+x.id).update({estado:'Abierto',aptoComentario:c});
-    return{after:()=>{if(!ok){const d=destParte(x);notify({srv:{tipo:'devuelta',id:x.id},to:d.para,cc:d.cc,subject:'['+origenOf(x)+'] Incidencia '+x.id+' devuelta por calidad',body:'Hola,\n\nCalidad ha devuelto la incidencia '+x.id+' ('+x.zona+' — '+x.elemento+').\nMotivo: '+c+'\n\nPor favor, revisadla y marcadla de nuevo como "Hecho" con foto.\n\nGracias,\n'+miNombre()})}else toast('Incidencia cerrada ✔')}}
+    return{after:()=>{if(!ok){const d=destParte(x);notify({srv:{tipo:'devuelta',id:x.id},to:d.para,cc:d.cc,subject:'['+origenOf(x)+'] Incidencia '+x.id+' devuelta por calidad',body:'Hola,\n\nCalidad ha devuelto la incidencia '+x.id+' ('+x.zona+' — '+x.elemento+').\nMotivo: '+c+'\n\nPor favor, revisadla y marcadla de nuevo como "Hecho" con foto.'+linkTxt(x.id)+'\n\nGracias,\n'+miNombre()})}else toast('Incidencia cerrada ✔')}}
   }})
 }
 async function undoRev(rid){
@@ -802,7 +808,7 @@ function openPunto(id){
 document.addEventListener('click',async e=>{
   const t=e.target.closest('[data-act]');if(!t)return;const a=t.dataset.act,d=t.dataset;
   if(a==='sheetClose'){closeSheet();return}
-  if(a==='tab'){S.tab=d.tab;S.focus=null;render();window.scrollTo(0,0);return}
+  if(a==='tab'){clearHash();S.tab=d.tab;S.focus=null;render();window.scrollTo(0,0);return}
   if(a==='sendcode'){const em=val('a_email').trim().toLowerCase();if(!/@/.test(em)){toast('Escribe tu correo');return}t.disabled=true;const r=await sb.auth.signInWithOtp({email:em,options:{shouldCreateUser:true}});t.disabled=false;if(r.error){toast('No se pudo enviar el código: '+r.error.message);return}S.auth={step:'code',email:em};render();return}
   if(a==='verifycode'){const code=val('a_code').trim();if(!code){toast('Escribe el código');return}t.disabled=true;const r=await sb.auth.verifyOtp({email:S.auth.email,token:code,type:'email'});t.disabled=false;if(r.error)toast('Código incorrecto o caducado');return}
   if(a==='usepass'){S.auth={step:'pass',email:val('a_email').trim()};render();return}
@@ -821,7 +827,7 @@ document.addEventListener('click',async e=>{
     if(a==='ok'){t.disabled=true;try{await doOK(pt,st)}catch(x){toast(errMsg(x));t.disabled=false}}else openNoOk(pt,st);return}
   if(a==='undo'){undoRev(d.rid);return}
   if(a==='verparte'){if(!d.id)return;S.focus=d.id;S.tab='partes';render();window.scrollTo(0,0);return}
-  if(a==='clearFocus'){S.focus=null;render();return}
+  if(a==='clearFocus'){clearHash();S.focus=null;render();return}
   const x=S.partes.find(q=>q.id===d.id);
   if(a==='hecho'&&x){openHecho(x);return}
   if(a==='apto'&&x){openApto(x,d.v==='1');return}
