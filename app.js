@@ -346,7 +346,6 @@ function doRender(){
   if(!p){app.innerHTML=vNoAccess();return}
   const ms=miembrosDe(p);if(ms.length&&!ms.includes(S.actor)){app.innerHTML=vQuienEres(p,ms);return}
   if(S.tab==='ajustes'&&!S.isAdmin)S.tab='inicio';
-  if(S.tab==='hk'&&!canAudit())S.tab='inicio';
   if(S.tab==='informe')ensureRep();
   const V={inicio:vInicio,revision:vRevision,hk:vHK,partes:vPartes,informe:vInforme,ajustes:vAjustes};
   app.innerHTML=hdr()+'<main>'+V[S.tab]()+'</main>'+nav();
@@ -378,7 +377,7 @@ function openUserMenu(){
 function hdr(){const p=me();return '<header class="top"><div><b>Auditorías de planta</b><small>Refresco Iberia · Marcilla</small></div><button class="who" data-act="userMenu">'+(p?esc(actorName()||p.nombre)+' ▾':'Entrar ▾')+'</button></header>'}
 function nav(){
   const tabs=[['inicio','🏠','Inicio'],['revision','🪟','Vidrios']];
-  if(canAudit())tabs.push(['hk','📝','Housekeeping']);
+  tabs.push(['hk','📝','Housekeeping']);
   tabs.push(['partes','🛠️','Incidencias'],['informe','🖨️','Informe']);if(S.isAdmin)tabs.push(['ajustes','⚙️','Ajustes']);
   const p=me();let badge=0;
   if(p){if(p.rol==='Calidad')badge=S.partes.filter(x=>x.estado==='Realizado').length;else badge=S.partes.filter(x=>x.estado==='Abierto'&&esMio(x)).length}
@@ -419,6 +418,15 @@ function vInicio(){
 }
 
 /* ---------- Revisión de vidrios ---------- */
+function misIncs(origen){
+  const ls=S.partes.filter(x=>origenOf(x)===origen);
+  const mine=ls.filter(x=>x.estado==='Abierto'&&(esMio(x)||canResolve(x))).sort((a,b)=>String(a.fechaPrevista||'').localeCompare(String(b.fechaPrevista||'')));
+  const val=(canAudit())?ls.filter(x=>x.estado==='Realizado'):[];
+  let h='<h3>'+(origen==='Vidrios'?'Incidencias de vidrios':'Incidencias de Housekeeping')+' pendientes'+(mine.length?' ('+mine.length+')':'')+'</h3>';
+  h+=mine.length?mine.map(x=>parteCard(x)).join(''):'<div class="empty">No tienes incidencias pendientes de '+(origen==='Vidrios'?'vidrios':'Housekeeping')+' ✔</div>';
+  if(val.length)h+='<h3>Por validar (Apto calidad) — '+(origen==='Vidrios'?'vidrios':'Housekeeping')+' ('+val.length+')</h3>'+val.map(x=>parteCard(x)).join('');
+  return h
+}
 function vRevision(){
   const ls=lineasList();if(!ls.length)return empty('No hay puntos en el catálogo.');
   if(!S.linea||!ls.includes(S.linea))S.linea=ls[0];
@@ -427,7 +435,7 @@ function vRevision(){
   const rows=pts.map(pt=>({pt:pt,st:statOf(pt,S.off)}));
   const done=rows.filter(r=>r.st.rev).length,pc=rows.length?Math.round(100*done/rows.length):0;
   const list=S.soloPend?rows.filter(r=>!r.st.rev):rows;
-  let h='<h2>Revisión de vidrios y acrílicos</h2>';
+  let h='<h2>Revisión de vidrios y acrílicos</h2>'+misIncs('Vidrios')+'<h3>Revisión de puntos</h3>';
   h+=ls.length>8?'<label>Zona</label><select data-set="linea">'+ls.map(l=>'<option '+(l===S.linea?'selected':'')+'>'+esc(l)+'</option>').join('')+'</select>':'<div class="chips">'+ls.map(l=>'<button class="'+(l===S.linea?'on':'')+'" data-act="setLinea" data-l="'+esc(l)+'">'+esc(l)+'</button>').join('')+'</div>';
   h+='<div class="row"><div class="grow"><select data-set="perF">'+['Todas','Semanal','Quincenal','Mensual'].map(x=>'<option '+(x===S.perF?'selected':'')+'>'+x+'</option>').join('')+'</select></div><div class="grow"><select data-set="off"><option value="0" '+(S.off===0?'selected':'')+'>Periodo actual</option><option value="-1" '+(S.off===-1?'selected':'')+'>Periodo anterior</option></select></div></div>';
   h+='<p class="muted small">Periodo actual → '+PERS.map(per=>{const q=periodFor(per,new Date(),0);return '<b>'+per+'</b> '+fmtS(q.inicio)+'–'+fmtS(q.limite)}).join(' · ')+'</p>';
@@ -454,8 +462,9 @@ function ptRow(pt,st,ca){
 function vHK(){
   const hk=S.partes.filter(x=>origenOf(x)==='Housekeeping');
   let h='<h2>Housekeeping</h2><p class="muted">Auditoría de orden y limpieza. Cada no conformidad avisa por correo al departamento que la resuelve.</p>';
-  h+='<p style="margin:14px 0"><button class="b pri big" data-act="newHK">+ Nueva no conformidad</button></p>';
-  h+='<h3>Últimas ('+hk.length+')</h3>';
+  h+=misIncs('Housekeeping');
+  if(canAudit())h+='<p style="margin:14px 0"><button class="b pri big" data-act="newHK">+ Nueva no conformidad</button></p>';
+  h+='<h3>Todas las no conformidades (últimas '+Math.min(15,hk.length)+' de '+hk.length+')</h3>';
   return h+(hk.length?hk.slice(0,15).map(parteCard).join(''):empty('Todavía no hay no conformidades de Housekeeping.'))
 }
 function openHK(){
@@ -847,7 +856,7 @@ document.addEventListener('click',async e=>{
   if(a==='setLinea'){S.linea=d.l;render();return}
   if(a==='imgs'){const pt=S.puntos.find(p=>p.id===d.pid);if(pt&&pt.fotos&&pt.fotos.length)showPaths(pt.fotos.map(f=>'ref/'+f));return}
   if(a==='foto'){showPaths([d.f]);return}
-  if(a==='newHK'){openHK();return}
+  if(a==='newHK'){if(!canAudit())return;openHK();return}
   if(a==='ok'||a==='nook'){const pt=S.puntos.find(p=>p.id===d.pid);if(!pt)return;const st=statOf(pt,S.off);
     if(a==='ok'){t.disabled=true;try{await doOK(pt,st)}catch(x){toast(errMsg(x));t.disabled=false}}else openNoOk(pt,st);return}
   if(a==='undo'){undoRev(d.rid);return}
