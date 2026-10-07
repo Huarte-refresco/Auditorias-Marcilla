@@ -346,6 +346,7 @@ function doRender(){
   if(!p){app.innerHTML=vNoAccess();return}
   const ms=miembrosDe(p);if(ms.length&&!ms.includes(S.actor)){app.innerHTML=vQuienEres(p,ms);return}
   if(S.tab==='ajustes'&&!S.isAdmin)S.tab='inicio';
+  if(S.tab==='partes'&&!canAudit()&&!S.focus)S.tab='inicio';
   if(S.tab==='informe')ensureRep();
   const V={inicio:vInicio,revision:vRevision,hk:vHK,partes:vPartes,informe:vInforme,ajustes:vAjustes};
   app.innerHTML=hdr()+'<main>'+V[S.tab]()+'</main>'+nav();
@@ -376,12 +377,13 @@ function openUserMenu(){
 }
 function hdr(){const p=me();return '<header class="top"><div><b>Auditorías de planta</b><small>Refresco Iberia · Marcilla</small></div><button class="who" data-act="userMenu">'+(p?esc(actorName()||p.nombre)+' ▾':'Entrar ▾')+'</button></header>'}
 function nav(){
-  const tabs=[['inicio','🏠','Inicio'],['revision','🪟','Vidrios']];
-  tabs.push(['hk','📝','Housekeeping']);
-  tabs.push(['partes','🛠️','Incidencias'],['informe','🖨️','Informe']);if(S.isAdmin)tabs.push(['ajustes','⚙️','Ajustes']);
-  const p=me();let badge=0;
-  if(p){if(p.rol==='Calidad')badge=S.partes.filter(x=>x.estado==='Realizado').length;else badge=S.partes.filter(x=>x.estado==='Abierto'&&esMio(x)).length}
-  return '<nav class="nav">'+tabs.map(t=>'<button class="'+(S.tab===t[0]?'on':'')+'" data-act="tab" data-tab="'+t[0]+'"><span class="ic">'+t[1]+'</span>'+t[2]+(t[0]==='partes'&&badge?'<span class="bd">'+badge+'</span>':'')+'</button>').join('')+'</nav>'
+  const sup=canAudit(),p=me();
+  const cnt=o=>S.partes.filter(x=>origenOf(x)===o&&x.estado==='Abierto'&&(esMio(x)||canResolve(x))).length;
+  const bV=sup?0:cnt('Vidrios'),bH=sup?0:cnt('Housekeeping');
+  const tabs=[['inicio','🏠','Inicio','',0],['revision','🔍','Vidrios',bV],['hk','📝','Housekeeping',bH]];
+  if(sup)tabs.push(['partes','🛠️','Incidencias',S.partes.filter(x=>x.estado==='Realizado').length]);
+  tabs.push(['informe','🖨️','Informe',0]);if(S.isAdmin)tabs.push(['ajustes','⚙️','Ajustes',0]);
+  return '<nav class="nav">'+tabs.map(t=>'<button class="'+(S.tab===t[0]?'on':'')+'" data-act="tab" data-tab="'+t[0]+'"><span class="ic">'+t[1]+'</span>'+t[2]+(t[3]?'<span class="bd">'+t[3]+'</span>':'')+'</button>').join('')+'</nav>'
 }
 
 
@@ -412,7 +414,10 @@ function vInicio(){
     if(porVal.length)h+='<h3>Por validar (Apto calidad)</h3>'+porVal.map(x=>parteCard(x)).join('');
     if(venc.length)h+='<h3>Fuera de plazo</h3>'+venc.map(x=>parteCard(x)).join('');
   }else{
-    h+='<h3>Incidencias abiertas de mi departamento</h3>'+(mis.length?mis.map(x=>parteCard(x)).join(''):empty('No tienes incidencias pendientes ✔'));
+    h+='<h3>Lo que tienes pendiente</h3>';
+    [['Vidrios','revision','🔍'],['Housekeeping','hk','📝']].forEach(o=>{
+      const l=abiertos.filter(x=>origenOf(x)===o[0]&&(esMio(x)||canResolve(x))),v=l.filter(isOverdue).length,prox=l.map(x=>x.fechaPrevista).filter(Boolean).sort()[0];
+      h+='<div class="card" style="border-left:5px solid '+(v?'#c0301c':l.length?'#d98a00':'#0a7a46')+'"><div class="row"><b class="grow" style="font-size:16px">'+o[2]+' '+o[0]+'</b><span class="chip '+(l.length?(v?'bad':'pend'):'ok')+'">'+(l.length?l.length+' pendiente'+(l.length>1?'s':''):'✔ al día')+'</span></div>'+(l.length?'<div class="muted small">'+(v?v+' fuera de plazo · ':'')+(prox?'la más próxima vence el '+fmtD(prox):'')+'</div><p style="margin-top:8px"><button class="b pri sm" data-act="tab" data-tab="'+o[1]+'">Ver y cerrar</button></p>':'<div class="muted small">No tienes incidencias pendientes.</div>')+'</div>'});
   }
   return h
 }
@@ -515,7 +520,7 @@ function vPartes(){
     if(S.fResp==='mios'&&p)l=l.filter(esMio);
   }
   let h='<h2>Incidencias</h2>';
-  if(S.focus)h+='<p><button class="b sm" data-act="clearFocus">← Ver todas las incidencias</button></p>';
+  if(S.focus)h+='<p><button class="b sm" data-act="clearFocus">'+(canAudit()?'← Ver todas las incidencias':'← Volver al inicio')+'</button></p>';
   else{
     h+='<div class="row"><div class="grow"><select data-set="fEstado">'+['Abierto','Realizado','Cerrado','Todos'].map(x=>'<option '+(x===S.fEstado?'selected':'')+'>'+x+'</option>').join('')+'</select></div><div class="grow"><select data-set="fOrigen">'+['Todos','Vidrios','Housekeeping'].map(x=>'<option '+(x===S.fOrigen?'selected':'')+'>'+x+'</option>').join('')+'</select></div><div class="grow"><select data-set="fResp"><option value="mios" '+(S.fResp==='mios'?'selected':'')+'>Mi departamento</option><option value="todos" '+(S.fResp==='todos'?'selected':'')+'>Todas</option></select></div></div>';
     h+='<div class="row" style="margin-top:8px"><div class="grow"><select data-set="fDpto">'+['Todos'].concat(S.deptos.map(d=>d.nombre).sort()).map(x=>'<option '+(x===S.fDpto?'selected':'')+'>'+esc(x)+'</option>').join('')+'</select></div><div class="grow"><input type="month" data-set="fMes" value="'+esc(S.fMes)+'" title="Mes (vacío = todos)"></div></div>';
@@ -861,7 +866,7 @@ document.addEventListener('click',async e=>{
     if(a==='ok'){t.disabled=true;try{await doOK(pt,st)}catch(x){toast(errMsg(x));t.disabled=false}}else openNoOk(pt,st);return}
   if(a==='undo'){undoRev(d.rid);return}
   if(a==='verparte'){if(!d.id)return;S.focus=d.id;S.tab='partes';render();window.scrollTo(0,0);return}
-  if(a==='clearFocus'){clearHash();S.focus=null;render();return}
+  if(a==='clearFocus'){clearHash();S.focus=null;if(!canAudit())S.tab='inicio';render();return}
   const x=S.partes.find(q=>q.id===d.id);
   if(a==='hecho'&&x){if(!canResolve(x)){toast('Solo puede cerrarla el responsable asignado (o Nuria)');return}openHecho(x);return}
   if(a==='apto'&&x){openApto(x,d.v==='1');return}
