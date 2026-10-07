@@ -43,7 +43,7 @@ async function processRef(file){const c=await readImage(file,420);const t=await 
 const DEFAULT_SECC=['Mezclas','Envasado','Almacén','Taller de mantenimiento'];
 const S={db:null,auth:{step:'email',email:''},started:false,account:null,emails:[],siteId:null,driveId:null,fatal:null,isAdmin:false,personas:[],deptos:[],puntos:[],revs:{},partes:[],
  config:{plazoDias:14,edicion:'Edición 1',desde:'2026-10-01',respDefault:'',dptoDefault:'',seccionesDeteccion:DEFAULT_SECC,validarHK:false},
- loaded:{},persona:null,tab:'inicio',linea:null,perF:'Todas',soloPend:true,off:0,
+ loaded:{},persona:null,tab:'inicio',linea:null,perF:'Todas',inPer:'Todas',soloPend:true,off:0,
  fEstado:'Abierto',fResp:null,fOrigen:'Todos',fDpto:'Todos',fMes:'',focus:null,
  repTab:'hoja',repLinea:null,repMes:todayISO().slice(0,7),repAll:false,repOpen:false,rep:{key:'',revs:[],loading:false},
  ajLinea:'Todas',nombreSugerido:'',actor:null};
@@ -60,7 +60,7 @@ const splitMails=s=>String(s||'').split(/[;,\s]+/).filter(m=>/@/.test(m));
 const uniq=a=>[...new Set(a.filter(Boolean).map(s=>s.trim()))];
 const inDept=(p,nombre)=>{if(!p||!nombre)return false;if(p.departamento===nombre)return true;const d=deptByName(nombre);return !!d&&((d.para||[]).includes(p.id)||(d.cc||[]).includes(p.id))};
 const esMio=x=>{const p=me();return !!p&&(x.resp===p.id||inDept(p,deptOf(x)))};
-const canResolve=x=>{const p=me();return !!p&&(esMio(x)||p.rol==='Calidad'||S.isAdmin)};
+const canResolve=x=>!!me()&&esMio(x);
 function dest(nombre,extraPersonaId){
   const d=deptByName(nombre);let para=[],cc=[];
   if(d){para=(d.para||[]).map(emailOfId);cc=(d.cc||[]).map(emailOfId)}
@@ -76,6 +76,10 @@ const statOf=(pt,off)=>{const per=periodFor(pt.per||'Mensual',new Date(),off);co
 const activos=l=>S.puntos.filter(p=>p.activo!==false&&(!l||p.linea===l));
 const isOverdue=x=>x.estado==='Abierto'&&x.fechaPrevista&&x.fechaPrevista<todayISO();
 function progress(l){const a=activos(l);let d=0;a.forEach(p=>{if(statOf(p,0).rev)d++});return{done:d,total:a.length}}
+const PERS=['Semanal','Quincenal','Mensual'];
+function pendPer(l,per){const a=activos(l).filter(p=>(per==='Todas'||(p.per||'Mensual')===per));let d=0,lim='';a.forEach(p=>{const st=statOf(p,0);if(st.rev)d++;else if(!lim||st.per.limite<lim)lim=st.per.limite});return{total:a.length,done:d,pend:a.length-d,lim:lim}}
+const diasHasta=iso=>Math.round((new Date(iso+'T00:00:00')-new Date(todayISO()+'T00:00:00'))/864e5);
+const limTxt=iso=>{if(!iso)return '';const n=diasHasta(iso);return n<0?'vencido':n===0?'vence hoy':n===1?'vence mañana':'vence en '+n+' días (hasta '+fmtS(iso)+')'};
 function vencidasPrev(l){let n=0;activos(l).forEach(p=>{const s=statOf(p,-1);if(!s.rev&&s.per.inicio>=S.config.desde)n++});return n}
 const secciones=()=>S.config.seccionesDeteccion&&S.config.seccionesDeteccion.length?S.config.seccionesDeteccion:DEFAULT_SECC;
 const dptoDefault=()=>S.config.dptoDefault||(personaById(S.config.respDefault)||{}).departamento||(deptByName('Mantenimiento')?'Mantenimiento':(S.deptos[0]||{}).nombre)||'';
@@ -390,7 +394,15 @@ function vInicio(){
   h+='<div class="kpis"><div class="kpi warn"><b>'+abiertos.length+'</b><span>Incidencias abiertas</span></div><div class="kpi bad"><b>'+venc.length+'</b><span>Fuera de plazo</span></div><div class="kpi"><b>'+porVal.length+'</b><span>Por validar (calidad)</span></div>'+(cal||S.isAdmin?'<div class="kpi warn"><b>'+pend+'</b><span>Revisiones de vidrios pendientes</span></div><div class="kpi bad"><b>'+vp+'</b><span>Sin hacer del periodo anterior</span></div>':'')+'</div>';
   if(cal||S.isAdmin){
     h+='<h3>Revisión de vidrios (periodo actual)</h3>';
-    h+=lineasList().map(l=>{const g=progress(l),pc=g.total?Math.round(100*g.done/g.total):0,v=vencidasPrev(l);return '<div class="card"><div class="row"><b class="grow">'+esc(lineaLabel(l))+'</b><span class="muted small">'+g.done+' de '+g.total+'</span><button class="b sm" data-act="irLinea" data-l="'+esc(l)+'">Revisar</button></div><div class="bar"><i style="width:'+pc+'%"></i></div>'+(v?'<span class="chip bad">'+v+' del periodo anterior sin hacer</span>':'')+'</div>'}).join('')||empty('Aún no hay puntos en el catálogo.');
+    const tot=PERS.map(per=>{const r={per:per,total:0,done:0,lim:''};lineasList().forEach(l=>{const g=pendPer(l,per);r.total+=g.total;r.done+=g.done;if(g.pend&&(!r.lim||g.lim<r.lim))r.lim=g.lim});r.pend=r.total-r.done;return r});
+    h+='<div class="kpis">'+tot.filter(t=>t.total).map(t=>'<div class="kpi '+(t.pend?(t.lim&&diasHasta(t.lim)<=2?'bad':'warn'):'')+'" style="cursor:pointer;text-align:left;'+(S.inPer===t.per?'outline:2px solid #0b5ed7;':'')+'" data-act="setInPer" data-p="'+t.per+'"><b>'+t.pend+'</b><span>'+({Semanal:'Semanales',Quincenal:'Quincenales',Mensual:'Mensuales'}[t.per])+' pendientes'+(t.pend?'<br>'+limTxt(t.lim):'<br>✔ al día')+'</span></div>').join('')+'</div>';
+    h+='<div class="chips">'+['Todas'].concat(PERS).map(x=>'<button class="'+(x===S.inPer?'on':'')+'" data-act="setInPer" data-p="'+x+'">'+(x==='Todas'?'Todas':x==='Mensual'?'Mensuales':x==='Semanal'?'Semanales':'Quincenales')+'</button>').join('')+'</div>';
+    h+='<p class="muted small">Ordenado por urgencia: arriba lo que vence antes. Pulsa «Revisar» para ir a esa zona con el filtro aplicado.</p>';
+    const zs=lineasList().map(l=>({l:l,g:pendPer(l,S.inPer),pp:PERS.map(per=>Object.assign({per:per},pendPer(l,per)))})).filter(z=>z.g.total);
+    zs.sort((x,y)=>{const ax=x.g.pend?0:1,ay=y.g.pend?0:1;if(ax!==ay)return ax-ay;if(x.g.lim!==y.g.lim)return (x.g.lim||'9').localeCompare(y.g.lim||'9');return y.g.pend-x.g.pend});
+    h+=zs.map(z=>{const g=z.g,pc=g.total?Math.round(100*g.done/g.total):0,v=vencidasPrev(z.l);
+      const chips=z.pp.filter(q=>q.total&&(S.inPer==='Todas'||q.per===S.inPer)).map(q=>'<span class="chip '+(q.pend?(q.lim&&diasHasta(q.lim)<=2?'bad':'pend'):'ok')+'">'+q.per+': '+(q.pend?q.pend+' pend. · '+limTxt(q.lim):'✔')+'</span>').join(' ');
+      return '<div class="card"><div class="row"><b class="grow">'+esc(lineaLabel(z.l))+'</b><span class="muted small">'+g.done+' de '+g.total+'</span><button class="b sm'+(g.pend?' pri':'')+'" data-act="irLinea" data-l="'+esc(z.l)+'">Revisar</button></div><div class="bar"><i style="width:'+pc+'%"></i></div><div style="margin-top:6px">'+chips+(v?' <span class="chip bad">'+v+' del periodo anterior sin hacer</span>':'')+'</div></div>'}).join('')||empty('Aún no hay puntos con ese filtro.');
     if(porVal.length)h+='<h3>Por validar (Apto calidad)</h3>'+porVal.map(x=>parteCard(x)).join('');
     if(venc.length)h+='<h3>Fuera de plazo</h3>'+venc.map(x=>parteCard(x)).join('');
   }else{
@@ -585,12 +597,13 @@ async function hkXlsx(){
   try{const data=XLSX.write(hkWorkbook(),{type:'array',bookType:'xlsx'});saveFile('housekeeping_'+(S.repAll?'todos':S.repMes)+'.xlsx',data,'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')}
   catch(er){toast('No se pudo generar el Excel. Usa «Copiar» o el CSV.')}
 }
-const repBody=()=>S.repTab==='hoja'?hojaHTML(S.repLinea,S.repMes,S.rep.revs):S.repTab==='parte'?parteHTML(S.repMes):hkHTML();
+const hojaTodas=()=>lineasList().map(l=>'<div style="page-break-after:always;break-after:page;margin-bottom:28px">'+hojaHTML(l,S.repMes,S.rep.revs)+'</div>').join('');
+const repBody=()=>S.repTab==='hoja'?hojaTodas():S.repTab==='parte'?parteHTML(S.repMes):hkHTML();
 function vInforme(){
   const ls=lineasList();if(!S.repLinea||!ls.includes(S.repLinea))S.repLinea=ls[0];
   if(!S.repMes)S.repMes=todayISO().slice(0,7);
   let h='<h2 class="noprint">Informes</h2><div class="noprint"><div class="chips"><button class="'+(S.repTab==='hoja'?'on':'')+'" data-act="repTab" data-t="hoja">Hoja de revisión (vidrios)</button><button class="'+(S.repTab==='parte'?'on':'')+'" data-act="repTab" data-t="parte">Parte de mantenimiento</button><button class="'+(S.repTab==='hk'?'on':'')+'" data-act="repTab" data-t="hk">Housekeeping</button></div>';
-  h+='<div class="row">'+(S.repTab==='hoja'?'<div class="grow"><select data-set="repLinea">'+ls.map(l=>'<option '+(l===S.repLinea?'selected':'')+'>'+esc(l)+'</option>').join('')+'</select></div>':'')+'<div class="grow"><input type="month" data-set="repMes" value="'+esc(S.repMes)+'"></div>'+(S.repTab==='hk'?'<label class="inl"><input type="checkbox" data-set="repAll" '+(S.repAll?'checked':'')+'> Todos los meses</label><label class="inl"><input type="checkbox" data-set="repOpen" '+(S.repOpen?'checked':'')+'> Incluir abiertas de meses anteriores</label>':'')+'</div>';
+  h+='<div class="row">'+'<div class="grow"><input type="month" data-set="repMes" value="'+esc(S.repMes)+'"></div>'+(S.repTab==='hk'?'<label class="inl"><input type="checkbox" data-set="repAll" '+(S.repAll?'checked':'')+'> Todos los meses</label><label class="inl"><input type="checkbox" data-set="repOpen" '+(S.repOpen?'checked':'')+'> Incluir abiertas de meses anteriores</label>':'')+'</div>';
   h+=(S.repTab==='hk'?'<div class="row" style="margin:10px 0"><button class="b pri sm" data-act="hkCopy">📋 Copiar para el Excel del holding</button><button class="b sm" data-act="hkXlsx">⬇ Excel (.xlsx)</button><button class="b sm" data-act="dlCsv">CSV</button><button class="b ghost sm" data-act="imprimir">🖨️ Imprimir</button></div><p class="muted small">Mismo orden de columnas que la vista «Exportación a excel» ('+hkExportRows().length+' filas). La copia no lleva cabecera.</p></div>':'<div class="row" style="margin:10px 0"><button class="b pri sm" data-act="imprimir">🖨️ Imprimir / PDF</button><button class="b sm" data-act="dlHtml">Descargar para imprimir</button><button class="b sm" data-act="dlCsv">Descargar CSV</button></div></div>');
   if(S.repTab==='hoja'&&S.rep.key!==S.repMes)return h+empty('Cargando mes…');
   return h+'<div class="rep-wrap">'+repBody()+'</div>'
@@ -609,7 +622,7 @@ function reportCSV(){
     vidriosPartes(S.repMes).forEach(x=>{const pr=personaById(x.resp);rows.push([x.id,fmtD(x.fecha),x.linea,x.zona,x.elemento,x.accion,deptOf(x),pr?pr.nombre:'',fmtD(x.fechaPrevista),x.estado,x.accionRealizada||'',x.estado==='Abierto'?'':(x.limpiezaZona?'Sí':'No'),x.estado==='Abierto'?'':(x.sinMateriales?'Sí':'No'),x.operario||'',fmtD(x.fechaReal),x.aptoPor||'',fmtD(x.aptoFecha),x.comentarios||''])})
   }else{
     rows=[['Línea','Equipo','Revisión','Periodicidad','Inicio periodo','Resultado','Fecha','Revisado por','Parte (ACP)','Observación']];
-    S.rep.revs.filter(r=>r.linea===S.repLinea).sort((a,b)=>a.pid.localeCompare(b.pid,undefined,{numeric:true})||a.inicio.localeCompare(b.inicio)).forEach(r=>{const pt=S.puntos.find(p=>p.id===r.pid);rows.push([r.linea,r.equipo,pt?pt.rev:'',r.per,fmtD(r.inicio),r.resultado,fmtD(r.fecha),r.por,r.parteId||'',r.obs||''])})
+    S.rep.revs.slice().sort((a,b)=>a.linea.localeCompare(b.linea,undefined,{numeric:true})||a.pid.localeCompare(b.pid,undefined,{numeric:true})||a.inicio.localeCompare(b.inicio)).forEach(r=>{const pt=S.puntos.find(p=>p.id===r.pid);rows.push([r.linea,r.equipo,pt?pt.rev:'',r.per,fmtD(r.inicio),r.resultado,fmtD(r.fecha),r.por,r.parteId||'',r.obs||''])})
   }
   return rows.map(r=>r.map(csvCell).join(';')).join('\r\n')
 }
@@ -648,16 +661,19 @@ function wirePhoto(id,ref){
 }
 
 /* ---- avisos por correo (varios destinatarios y copia por departamento) ---- */
+function mailHtml(t){const e=x=>String(x).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  return '<div style="font-family:Calibri,Arial,sans-serif;font-size:11pt">'+e(t).replace(/(Pulsa aquí para (?:ver la incidencia|abrir la app)): (https?:\/\/\S+)/g,(m0,l,u)=>'<a href="'+u.replace(/&amp;/g,'&')+'" style="background:#0b5ed7;color:#fff;padding:6px 12px;border-radius:4px;text-decoration:none;font-weight:bold">'+l+'</a>').replace(/\n/g,'<br>')+'</div>'}
 function openMail(m){
   const to=m.to||[],cc=m.cc||[];
   if(!to.length){openSheet('Aviso por correo','<div class="warnbox">No hay ningún correo configurado para este departamento. Añádelo en Ajustes → Departamentos y correos.</div>',{noSave:true});return}
   const url='mailto:'+to.join(',')+'?'+(cc.length?'cc='+cc.map(encodeURIComponent).join(',')+'&':'')+'subject='+encodeURIComponent(m.subject)+'&body='+encodeURIComponent(m.body);
   const canSend=CFG.avisosPorCorreo!==false&&!!m.srv;
-  openSheet('Aviso por correo','<label>Para</label><div class="mailbox">'+esc(to.join('; '))+'</div>'+(cc.length?'<label>CC (en copia)</label><div class="mailbox">'+esc(cc.join('; '))+'</div>':'')+'<label>Asunto</label><div class="mailbox">'+esc(m.subject)+'</div><label>Mensaje</label><div class="mailbox">'+esc(m.body)+'</div><p class="row" style="margin-top:12px">'+(canSend?'<button class="b pri" id="mailsend">✉ Enviar ahora</button>':'')+'<a class="b'+(canSend?'':' pri')+'" style="text-decoration:none;display:inline-block" id="mailgo" href="'+esc(url)+'" target="_blank" rel="noopener">Abrir en mi correo</a><button class="b" id="mailcopy">Copiar mensaje</button></p><p class="muted small">'+(canSend?'«Enviar ahora» lo manda la app a todo el departamento (las respuestas te llegarán a ti).':'Se abrirá tu correo con el aviso ya redactado.')+'</p>',{noSave:true,wire:()=>{
+  openSheet('Aviso por correo','<label>Para</label><div class="mailbox">'+esc(to.join('; '))+'</div>'+(cc.length?'<label>CC (en copia)</label><div class="mailbox">'+esc(cc.join('; '))+'</div>':'')+'<label>Asunto</label><div class="mailbox">'+esc(m.subject)+'</div><label>Mensaje</label><div class="mailbox">'+esc(m.body)+'</div><p class="row" style="margin-top:12px">'+(canSend?'<button class="b pri" id="mailsend">✉ Enviar ahora</button>':'')+'<a class="b'+(canSend?'':' pri')+'" style="text-decoration:none;display:inline-block" id="mailgo" href="'+esc(url)+'" target="_blank" rel="noopener">Abrir en mi correo</a><button class="b" id="mailcopy">Copiar mensaje</button><button class="b" id="mailhtml">Copiar con botón (Outlook)</button></p><p class="muted small">'+(canSend?'«Enviar ahora» lo manda la app a todo el departamento (las respuestas te llegarán a ti).':'Se abrirá tu correo con el aviso ya redactado.')+'</p>',{noSave:true,wire:()=>{
     const sb=$('#mailsend');
     if(sb)sb.onclick=async()=>{sb.disabled=true;try{await sendServerMail(m);closeSheet();toast('✉ Aviso enviado')}catch(e){sb.disabled=false;toast('No se pudo enviar: usa «Abrir en mi correo»')}};
     $('#mailgo').onclick=()=>{if(m.onSent)m.onSent()};
     $('#mailcopy').onclick=async()=>{try{await navigator.clipboard.writeText(m.body);toast('Mensaje copiado')}catch(e){toast('No se pudo copiar')}};
+    $('#mailhtml').onclick=async()=>{try{const h=mailHtml(m.body);await navigator.clipboard.write([new ClipboardItem({'text/html':new Blob([h],{type:'text/html'}),'text/plain':new Blob([m.body],{type:'text/plain'})})]);toast('Copiado: pégalo en el cuerpo del correo (Ctrl+V)')}catch(e){try{await navigator.clipboard.writeText(m.body);toast('Copiado como texto')}catch(_){toast('No se pudo copiar')}}};
   }})
 }
 const appLink=id=>{const base=String(CFG.appUrl||(location.origin+location.pathname)).split('#')[0];return base+(id?'#parte='+encodeURIComponent(id):'')};
@@ -818,7 +834,8 @@ document.addEventListener('click',async e=>{
   if(a==='userMenu'){openUserMenu();return}
   if(a==='setActor'){const v=val('actorSel');if(!v){toast('Elige tu nombre');return}S.actor=v;try{sessionStorage.setItem('aud_actor',v);localStorage.setItem('aud_actor_last',v)}catch(e){}render();return}
   if(a==='backup'){try{saveFile('copia_auditorias_'+todayISO()+'.json',JSON.stringify(await exportAll(),null,1),'application/json')}catch(er){toast('No se pudo generar la copia')}return}
-  if(a==='irLinea'){S.linea=d.l;S.tab='revision';render();window.scrollTo(0,0);return}
+  if(a==='setInPer'){S.inPer=(S.inPer===d.p&&d.p!=='Todas')?'Todas':d.p;render();return}
+  if(a==='irLinea'){S.linea=d.l;S.perF=S.inPer;S.off=0;S.soloPend=true;S.tab='revision';render();window.scrollTo(0,0);return}
   if(a==='setLinea'){S.linea=d.l;render();return}
   if(a==='imgs'){const pt=S.puntos.find(p=>p.id===d.pid);if(pt&&pt.fotos&&pt.fotos.length)showPaths(pt.fotos.map(f=>'ref/'+f));return}
   if(a==='foto'){showPaths([d.f]);return}
@@ -829,7 +846,7 @@ document.addEventListener('click',async e=>{
   if(a==='verparte'){if(!d.id)return;S.focus=d.id;S.tab='partes';render();window.scrollTo(0,0);return}
   if(a==='clearFocus'){clearHash();S.focus=null;render();return}
   const x=S.partes.find(q=>q.id===d.id);
-  if(a==='hecho'&&x){openHecho(x);return}
+  if(a==='hecho'&&x){if(!canResolve(x)){toast('Solo puede cerrarla la persona o el departamento al que está asignada');return}openHecho(x);return}
   if(a==='apto'&&x){openApto(x,d.v==='1');return}
   if(a==='avisar'&&x){openMail(mailNuevoParte(x));return}
   if(a==='avisarCal'&&x){openMail(mailRealizado(x));return}
@@ -840,7 +857,7 @@ document.addEventListener('click',async e=>{
   if(a==='hkXlsx'){hkXlsx();return}
   if(a==='imprimir'){await preloadPhotos('.rep-wrap');try{window.print()}catch(er){toast('Usa "Descargar para imprimir"')}return}
   if(a==='dlHtml'||a==='dlCsv'){
-    try{const nm=S.repTab==='hoja'?'hoja_revision_'+S.repLinea+'_'+S.repMes:S.repTab==='parte'?'parte_mantenimiento_'+S.repMes:'housekeeping_'+(S.repAll?'todos':S.repMes);
+    try{const nm=S.repTab==='hoja'?'hoja_revision_todas_las_zonas_'+S.repMes:S.repTab==='parte'?'parte_mantenimiento_'+S.repMes:'housekeeping_'+(S.repAll?'todos':S.repMes);
       if(a==='dlHtml')saveFile(nm+'.html',await inlinePhotos(reportDocHTML()),'text/html');
       else saveFile(nm+'.csv','\ufeff'+reportCSV(),'text/csv');
     }catch(er){toast('No se pudo descargar')}return}
