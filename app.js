@@ -71,6 +71,7 @@ function dest(nombre,extraPersonaId){
   if(d){para=(d.para||[]).map(emailOfId);cc=(d.cc||[]).map(emailOfId)}
   if(extraPersonaId)para.push(emailOfId(extraPersonaId));
   if(!para.length&&nombre)para=S.personas.filter(p=>p.departamento===nombre&&p.email).map(p=>p.email);
+  if(nombre&&d)cc=cc.concat(S.personas.filter(p=>p.departamento===nombre&&p.email).map(p=>p.email));
   para=uniq(para);cc=uniq(cc).filter(m=>!para.includes(m));return{para:para,cc:cc}
 }
 const destParte=x=>dest(deptOf(x),x.resp);
