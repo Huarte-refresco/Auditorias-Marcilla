@@ -1,4 +1,3 @@
-
 /* ====================== utilidades ====================== */
 const $=s=>document.querySelector(s);
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -48,7 +47,8 @@ const S={db:null,auth:{step:'email',email:''},started:false,account:null,emails:
  repTab:'hoja',repLinea:null,repMes:todayISO().slice(0,7),repAll:false,repOpen:false,rep:{key:'',revs:[],loading:false},
  ajLinea:'Todas',nombreSugerido:'',actor:null};
 const photos={};
-const me=()=>S.personas.find(p=>S.emails.includes(String(p.email||'').toLowerCase())||p.id===S.persona)||null;
+const meReal=()=>S.personas.find(p=>S.emails.includes(String(p.email||'').toLowerCase())||p.id===S.persona)||null;
+const me=()=>{const r=meReal();return (r&&r.admin&&S.viewAs)?(personaById(S.viewAs)||r):r};
 const isCal=()=>{const p=me();return !!p&&p.rol==='Calidad'};
 const canAudit=()=>isCal()||S.isAdmin;
 const personaById=id=>S.personas.find(p=>p.id===id);
@@ -343,7 +343,7 @@ function doRender(){
   if(S.fatal){app.innerHTML=vFatal();return}
   if(!S.account){app.innerHTML=vSignIn();return}
   if(!S.db||!(S.loaded.personas&&S.loaded.deptos&&S.loaded.puntos&&S.loaded.revs&&S.loaded.partes&&S.loaded.config)){app.innerHTML='<div class="empty">Cargando…</div>';return}
-  const p=me();S.isAdmin=!!(p&&p.admin);
+  const p=meReal();S.realAdmin=!!(p&&p.admin);if(!S.realAdmin)S.viewAs=null;S.isAdmin=S.realAdmin&&!S.viewAs;
   if(!p){app.innerHTML=vNoAccess();return}
   const ms=miembrosDe(p);if(ms.length&&!ms.includes(S.actor)){app.innerHTML=vQuienEres(p,ms);return}
   if(S.tab==='ajustes'&&!S.isAdmin)S.tab='inicio';
@@ -357,7 +357,7 @@ function doRender(){
 const planosDe=l=>(S.config.planos&&S.config.planos[l])||[];
 async function processPlano(file){const c=await readImage(file,1800);const t=await readImage(file,220);return{full:c.toDataURL('image/jpeg',.82),thumb:t.toDataURL('image/jpeg',.7)}}
 const miembrosDe=p=>(p&&S.config.miembros&&S.config.miembros[p.id])||[];
-const actorName=()=>{const p=me();if(!p)return '';return miembrosDe(p).length?(S.actor||''):p.nombre};
+const actorName=()=>{if(S.viewAs){const r=meReal();if(r&&r.admin)return r.nombre}const p=me();if(!p)return '';return miembrosDe(p).length?(S.actor||''):p.nombre};
 function vQuienEres(p,ms){
   let last='';try{last=localStorage.getItem('aud_actor_last')||''}catch(e){}
   return '<div class="login"><div class="card"><h2>¿Quién eres?</h2><p class="muted">Has entrado con la cuenta compartida <b>'+esc(p.nombre)+'</b>. Elige tu nombre para que quede registrado en tus revisiones.</p><label>Mi nombre</label><select id="actorSel"><option value="">—</option>'+ms.map(n=>'<option '+(n===last?'selected':'')+'>'+esc(n)+'</option>').join('')+'</select><p style="margin-top:14px"><button class="b pri" style="width:100%" data-act="setActor">Continuar</button></p><p><button class="lnk small" data-act="logout">Cerrar sesión</button></p></div></div>'
@@ -369,14 +369,15 @@ async function doLogout(){
   S.actor=null;await sb.auth.signOut()
 }
 function openUserMenu(){
-  const p=me();if(!p){doLogout();return}
+  const p=meReal();if(!p){doLogout();return}
   const shared=miembrosDe(p).length>0;
-  openSheet('Sesión','<p class="kv">Cuenta: <b>'+esc(p.nombre)+'</b><br><span class="muted">'+esc(S.account?S.account.username:'')+'</span></p>'+(shared?'<p class="kv">Estás registrando como: <b>'+esc(S.actor||'—')+'</b></p><p><button class="b pri" id="m_chg">Cambiar de persona</button></p>':'')+'<p><button class="b ghost" id="m_out">Cerrar sesión</button></p>',{noSave:true,wire:()=>{
+  openSheet('Sesión','<p class="kv">Cuenta: <b>'+esc(p.nombre)+'</b><br><span class="muted">'+esc(S.account?S.account.username:'')+'</span></p>'+(shared?'<p class="kv">Estás registrando como: <b>'+esc(S.actor||'—')+'</b></p><p><button class="b pri" id="m_chg">Cambiar de persona</button></p>':'')+(S.realAdmin?'<label>Ver la app como… (solo administrador)</label><select id="m_as"><option value="">— Yo (Administrador) —</option>'+S.personas.filter(x=>x.id!==p.id).sort((a,b)=>String(a.nombre).localeCompare(b.nombre)).map(x=>'<option value="'+esc(x.id)+'" '+(S.viewAs===x.id?'selected':'')+'>'+esc(x.nombre)+' · '+esc(x.rol)+(x.departamento?' · '+esc(x.departamento):'')+'</option>').join('')+'</select><p class="muted small">Ves la app exactamente como la vería esa persona (pestañas, botones e incidencias). Solo cambia lo que ves en pantalla.</p>':'')+'<p><button class="b ghost" id="m_out">Cerrar sesión</button></p>',{noSave:true,wire:()=>{
+    const as=$('#m_as');if(as)as.onchange=()=>{S.viewAs=as.value||null;S.tab='inicio';S.focus=null;S.fResp=null;closeSheet();render();window.scrollTo(0,0)};
     const c=$('#m_chg');if(c)c.onclick=()=>{S.actor=null;try{sessionStorage.removeItem('aud_actor')}catch(e){}closeSheet();render()};
     $('#m_out').onclick=()=>{closeSheet();doLogout()}
   }})
 }
-function hdr(){const p=me();return '<header class="top"><div><b>Auditorías de planta</b><small>Refresco Iberia · Marcilla</small></div><button class="who" data-act="userMenu">'+(p?esc(actorName()||p.nombre)+' ▾':'Entrar ▾')+'</button></header>'}
+function hdr(){const p=meReal();return (S.viewAs&&me()?'<div style="background:#6b2fb3;color:#fff;padding:8px 14px;font-size:13px;display:flex;gap:10px;align-items:center;flex-wrap:wrap"><span class="grow" style="flex:1">👁 Estás viendo la app como <b>'+esc(me().nombre)+'</b> ('+esc(me().rol)+(me().departamento?' · '+esc(me().departamento):'')+'). Lo que hagas se guarda a tu nombre.</span><button class="b sm" data-act="verComoSalir">Volver a mi vista</button></div>':'')+'<header class="top"><div><b>Auditorías de planta</b><small>Refresco Iberia · Marcilla</small></div><button class="who" data-act="userMenu">'+(p?esc(actorName()||p.nombre)+' ▾':'Entrar ▾')+'</button></header>'}
 function nav(){
   const sup=canAudit(),p=me();
   const cnt=o=>S.partes.filter(x=>origenOf(x)===o&&x.estado==='Abierto'&&(esMio(x)||canResolve(x))).length;
@@ -855,6 +856,7 @@ document.addEventListener('click',async e=>{
   if(a==='backlogin'){S.auth={step:'email',email:''};render();return}
   if(a==='logout'){doLogout();return}
   if(a==='userMenu'){openUserMenu();return}
+  if(a==='verComoSalir'){S.viewAs=null;S.tab='inicio';S.fResp=null;render();window.scrollTo(0,0);return}
   if(a==='setActor'){const v=val('actorSel');if(!v){toast('Elige tu nombre');return}S.actor=v;try{sessionStorage.setItem('aud_actor',v);localStorage.setItem('aud_actor_last',v)}catch(e){}render();return}
   if(a==='backup'){try{saveFile('copia_auditorias_'+todayISO()+'.json',JSON.stringify(await exportAll(),null,1),'application/json')}catch(er){toast('No se pudo generar la copia')}return}
   if(a==='setInPer'){S.inPer=(S.inPer===d.p&&d.p!=='Todas')?'Todas':d.p;render();return}
