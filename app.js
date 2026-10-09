@@ -1,3 +1,4 @@
+
 /* ====================== utilidades ====================== */
 const $=s=>document.querySelector(s);
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -42,7 +43,7 @@ async function processRef(file){const c=await readImage(file,420);const t=await 
 const DEFAULT_SECC=['Mezclas','Envasado','Almacén','Taller de mantenimiento'];
 const S={db:null,auth:{step:'email',email:''},started:false,account:null,emails:[],siteId:null,driveId:null,fatal:null,isAdmin:false,personas:[],deptos:[],puntos:[],revs:{},partes:[],
  config:{plazoDias:14,edicion:'Edición 1',desde:'2026-10-01',respDefault:'',dptoDefault:'',seccionesDeteccion:DEFAULT_SECC,validarHK:false},
- loaded:{},persona:null,tab:'inicio',linea:null,perF:'Todas',inPer:'Todas',soloPend:true,off:0,
+ loaded:{},persona:null,tab:'inicio',linea:null,perF:'Todas',inPer:'Todas',resPer:'mes',resMes:todayISO().slice(0,7),resOrig:'Todos',soloPend:true,off:0,
  fEstado:'Abierto',fResp:null,fOrigen:'Todos',fDpto:'Todos',fMes:'',focus:null,
  repTab:'hoja',repLinea:null,repMes:todayISO().slice(0,7),repAll:false,repOpen:false,rep:{key:'',revs:[],loading:false},
  ajLinea:'Todas',nombreSugerido:'',actor:null};
@@ -393,6 +394,25 @@ function nav(){
 const empty=t=>'<div class="empty">'+t+'</div>';
 
 /* ---------- Inicio ---------- */
+function resumenInc(){
+  const per=S.resPer,hoy=new Date();let r=null,tit='';
+  if(per==='sem'){r=periodFor('Semanal',hoy,0);tit='esta semana'}
+  else if(per==='quin'){r=periodFor('Quincenal',hoy,0);tit='esta quincena'}
+  else if(per==='mes'){r=periodFor('Mensual',hoy,0);tit='este mes'}
+  else if(per==='mesAnt'){r=periodFor('Mensual',hoy,-1);tit='el mes anterior'}
+  else if(per==='otro'){const a=String(S.resMes||todayISO().slice(0,7)).split('-');r=periodFor('Mensual',new Date(Number(a[0]),Number(a[1])-1,1),0);tit='el mes '+a[1]+'/'+a[0]}
+  else tit='todo el histórico';
+  let l=S.partes.filter(x=>(S.resOrig==='Todos'||origenOf(x)===S.resOrig)&&(!r||(String(x.fecha).slice(0,10)>=r.inicio&&String(x.fecha).slice(0,10)<=r.limite)));
+  const ab=l.filter(x=>x.estado==='Abierto'),fp=ab.filter(isOverdue),pv=l.filter(x=>x.estado==='Realizado'),ce=l.filter(x=>x.estado==='Cerrado');
+  let h='<h3>Resumen de incidencias</h3><div class="row"><div class="grow"><select data-set="resPer">'+[['sem','Esta semana'],['quin','Esta quincena'],['mes','Este mes'],['mesAnt','Mes anterior'],['otro','Elegir mes…'],['todo','Todo el histórico']].map(o=>'<option value="'+o[0]+'" '+(S.resPer===o[0]?'selected':'')+'>'+o[1]+'</option>').join('')+'</select></div>'+(per==='otro'?'<div class="grow"><input type="month" data-set="resMes" value="'+esc(S.resMes)+'"></div>':'')+'</div>';
+  h+='<div class="chips">'+['Todos','Vidrios','Housekeeping'].map(x=>'<button class="'+(S.resOrig===x?'on':'')+'" data-act="setResOrig" data-o="'+x+'">'+(x==='Todos'?'Vidrios + Housekeeping':x)+'</button>').join('')+'</div>';
+  if(r)h+='<p class="muted small">Incidencias abiertas (creadas) '+tit+': '+fmtD(r.inicio)+' – '+fmtD(r.limite)+'</p>';else h+='<p class="muted small">Incidencias de '+tit+'</p>';
+  h+='<div class="kpis"><div class="kpi"><b>'+l.length+'</b><span>Total</span></div><div class="kpi warn"><b>'+ab.length+'</b><span>Abiertas</span></div><div class="kpi bad"><b>'+fp.length+'</b><span>Fuera de plazo</span></div><div class="kpi"><b>'+pv.length+'</b><span>Por validar</span></div><div class="kpi ok"><b>'+ce.length+'</b><span>Cerradas</span></div></div>';
+  const ds=[...new Set(l.map(x=>deptOf(x)||'Sin departamento'))].sort();
+  if(ds.length)h+='<table class="rep" style="width:100%;margin:6px 0 12px"><thead><tr><th>Departamento</th><th>Abiertas</th><th>Fuera plazo</th><th>Por validar</th><th>Cerradas</th></tr></thead><tbody>'+ds.map(d=>{const q=l.filter(x=>(deptOf(x)||'Sin departamento')===d);return '<tr><td>'+esc(d)+'</td><td class="c">'+q.filter(x=>x.estado==='Abierto').length+'</td><td class="c">'+q.filter(isOverdue).length+'</td><td class="c">'+q.filter(x=>x.estado==='Realizado').length+'</td><td class="c">'+q.filter(x=>x.estado==='Cerrado').length+'</td></tr>'}).join('')+'</tbody></table>';
+  else h+='<div class="empty">No hay incidencias en este periodo.</div>';
+  return h
+}
 function vInicio(){
   const p=me(),cal=p.rol==='Calidad';
   const abiertos=S.partes.filter(x=>x.estado==='Abierto'),venc=abiertos.filter(isOverdue),porVal=S.partes.filter(x=>x.estado==='Realizado');
@@ -401,6 +421,7 @@ function vInicio(){
   let h='<h2>Hola, '+esc(first(actorName()||p.nombre))+'</h2><p class="muted">'+esc(p.rol)+(p.departamento?' · '+esc(p.departamento):'')+'</p>';
   h+='<div class="kpis"><div class="kpi warn"><b>'+abiertos.length+'</b><span>Incidencias abiertas</span></div><div class="kpi bad"><b>'+venc.length+'</b><span>Fuera de plazo</span></div><div class="kpi"><b>'+porVal.length+'</b><span>Por validar (calidad)</span></div>'+(cal||S.isAdmin?'<div class="kpi warn"><b>'+pend+'</b><span>Revisiones de vidrios pendientes</span></div><div class="kpi bad"><b>'+vp+'</b><span>Sin hacer del periodo anterior</span></div>':'')+'</div>';
   if(cal||S.isAdmin){
+    h+=resumenInc();
     h+='<h3>Revisión de vidrios (periodo actual)</h3>';
     h+='<p class="muted small">Lo que toca auditar ahora, por periodicidad. Pulsa «Revisar» para ir a esa zona solo con lo pendiente.</p>';
     h+='<div class="chips">'+['Todas'].concat(PERS).map(x=>'<button class="'+(x===S.inPer?'on':'')+'" data-act="setInPer" data-p="'+x+'">'+(x==='Todas'?'Todas':x==='Mensual'?'Mensuales':x==='Semanal'?'Semanales':'Quincenales')+'</button>').join('')+'</div>';
@@ -859,6 +880,7 @@ document.addEventListener('click',async e=>{
   if(a==='verComoSalir'){S.viewAs=null;S.tab='inicio';S.fResp=null;render();window.scrollTo(0,0);return}
   if(a==='setActor'){const v=val('actorSel');if(!v){toast('Elige tu nombre');return}S.actor=v;try{sessionStorage.setItem('aud_actor',v);localStorage.setItem('aud_actor_last',v)}catch(e){}render();return}
   if(a==='backup'){try{saveFile('copia_auditorias_'+todayISO()+'.json',JSON.stringify(await exportAll(),null,1),'application/json')}catch(er){toast('No se pudo generar la copia')}return}
+  if(a==='setResOrig'){S.resOrig=d.o;render();return}
   if(a==='setInPer'){S.inPer=(S.inPer===d.p&&d.p!=='Todas')?'Todas':d.p;render();return}
   if(a==='irLinea'){S.linea=d.l;S.perF=d.p||S.inPer;S.off=0;S.soloPend=true;S.tab='revision';render();window.scrollTo(0,0);return}
   if(a==='setLinea'){S.linea=d.l;render();return}
