@@ -50,7 +50,7 @@ const S={db:null,auth:{step:'email',email:''},started:false,account:null,emails:
 const photos={};
 const meReal=()=>S.personas.find(p=>S.emails.includes(String(p.email||'').toLowerCase())||p.id===S.persona)||null;
 const me=()=>{const r=meReal();return (r&&r.admin&&S.viewAs)?(personaById(S.viewAs)||r):r};
-const esCalP=p=>!!p&&(p.rol==='Calidad'||p.departamento==='Calidad'||/nuria/i.test(p.nombre||''));
+const esCalP=p=>!!p&&(p.rol==='Calidad'||p.departamento==='Calidad'||/nuria|asun\S*\s+garde/i.test(p.nombre||''));
 const isCal=()=>esCalP(me());
 const canAudit=()=>isCal()||S.isAdmin;
 const personaById=id=>S.personas.find(p=>p.id===id);
@@ -63,7 +63,7 @@ const uniq=a=>[...new Set(a.filter(Boolean).map(s=>s.trim()))];
 const inDept=(p,nombre)=>{if(!p||!nombre)return false;if(p.departamento===nombre)return true;const d=deptByName(nombre);return !!d&&((d.para||[]).includes(p.id)||(d.cc||[]).includes(p.id))};
 const esMio=x=>{const p=me();return !!p&&(x.resp===p.id||inDept(p,deptOf(x)))};
 const mailOf=p=>String(p&&p.email||'').toLowerCase();
-const esSuper=()=>{const p=me();return !!p&&(/nuria/i.test(p.nombre||'')||(S.config.cierraTodo||[]).includes(p.id))};
+const esSuper=()=>{const p=me();return !!p&&(/nuria|asun\S*\s+garde/i.test(p.nombre||'')||(S.config.cierraTodo||[]).includes(p.id))};
 const esResp=x=>{const p=me();if(!p)return false;if(x.resp===p.id)return true;if(p.rol==='Coordinador'&&p.departamento&&p.departamento===deptOf(x))return true;const d=deptByName(deptOf(x));
   if(d&&(d.para||[]).length)return d.para.some(e=>e===p.id||String(e).toLowerCase()===mailOf(p));
   return !!deptOf(x)&&p.departamento===deptOf(x)};
