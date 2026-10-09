@@ -50,7 +50,8 @@ const S={db:null,auth:{step:'email',email:''},started:false,account:null,emails:
 const photos={};
 const meReal=()=>S.personas.find(p=>S.emails.includes(String(p.email||'').toLowerCase())||p.id===S.persona)||null;
 const me=()=>{const r=meReal();return (r&&r.admin&&S.viewAs)?(personaById(S.viewAs)||r):r};
-const isCal=()=>{const p=me();return !!p&&p.rol==='Calidad'};
+const esCalP=p=>!!p&&(p.rol==='Calidad'||p.departamento==='Calidad'||/nuria/i.test(p.nombre||''));
+const isCal=()=>esCalP(me());
 const canAudit=()=>isCal()||S.isAdmin;
 const personaById=id=>S.personas.find(p=>p.id===id);
 const deptByName=n=>S.deptos.find(d=>d.nombre===n)||null;
@@ -414,7 +415,7 @@ function resumenInc(){
   return h
 }
 function vInicio(){
-  const p=me(),cal=p.rol==='Calidad';
+  const p=me(),cal=isCal();
   const abiertos=S.partes.filter(x=>x.estado==='Abierto'),venc=abiertos.filter(isOverdue),porVal=S.partes.filter(x=>x.estado==='Realizado');
   const mis=abiertos.filter(esMio);
   let pend=0,vp=0;lineasList().forEach(l=>{const g=progress(l);pend+=g.total-g.done;vp+=vencidasPrev(l)});
@@ -532,7 +533,7 @@ function parteCard(x){
   return h+(b?'<div class="row" style="margin-top:8px">'+b+'</div>':'')+'</article>'
 }
 function vPartes(){
-  const p=me();if(S.fResp===null)S.fResp=(p&&(p.rol==='Calidad'||S.isAdmin))?'todos':'mios';
+  const p=me();if(S.fResp===null)S.fResp=(p&&(esCalP(p)||S.isAdmin))?'todos':'mios';
   let l=S.partes.slice();
   if(S.focus){l=l.filter(x=>x.id===S.focus)}
   else{
