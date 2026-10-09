@@ -604,7 +604,7 @@ const hkList=()=>S.partes.filter(x=>origenOf(x)==='Housekeeping'&&(S.repAll||Str
 const respName=x=>{const pr=personaById(x.resp);return pr?pr.nombre:deptOf(x)};
 function hkHTML(){
   const l=hkList();
-  let h='<div class="rep-title">HOUSEKEEPING — '+(S.repAll?'TODOS LOS MESES':S.repMes.split('-').reverse().join('/'))+'</div><table class="rep"><thead><tr><th>ID</th><th>FECHA APERT</th><th>MES</th><th>NCm/NCM</th><th>SECCIÓN DETECCIÓN</th><th>SECCIÓN RESOLUCIÓN</th><th>RESUMEN NO CONFORMIDADES</th><th>ANÁLISIS DE CAUSAS</th><th>ACCIONES CORRECTIVAS/PREVENTIVAS</th><th>RESPONSABLE</th><th>FECHA PREVISTA</th><th>FECHA REAL</th><th>ESTADO</th></tr></thead><tbody>';
+  let h=hkResumenHTML()+'<div class="rep-title">HOUSEKEEPING — '+(S.repAll?'TODOS LOS MESES':S.repMes.split('-').reverse().join('/'))+'</div><table class="rep"><thead><tr><th>ID</th><th>FECHA APERT</th><th>MES</th><th>NCm/NCM</th><th>SECCIÓN DETECCIÓN</th><th>SECCIÓN RESOLUCIÓN</th><th>RESUMEN NO CONFORMIDADES</th><th>ANÁLISIS DE CAUSAS</th><th>ACCIONES CORRECTIVAS/PREVENTIVAS</th><th>RESPONSABLE</th><th>FECHA PREVISTA</th><th>FECHA REAL</th><th>ESTADO</th></tr></thead><tbody>';
   if(!l.length)h+='<tr><td colspan="13" class="c">Sin no conformidades</td></tr>';
   l.forEach(x=>{h+='<tr><td>'+esc(x.id)+'</td><td>'+fmtD(x.fecha)+'</td><td class="c">'+Number(String(x.fecha).slice(5,7))+'</td><td>'+esc(x.ncm||x.elemento)+'</td><td>'+esc(x.seccionDeteccion||x.zona)+'</td><td>'+esc(deptOf(x))+'</td><td>'+esc(x.resumen)+'</td><td>'+esc(x.causas)+'</td><td>'+esc(x.accion)+'</td><td>'+esc(respName(x))+'</td><td class="c">'+fmtD(x.fechaPrevista)+'</td><td class="c">'+fmtD(x.fechaReal)+'</td><td class="c">'+(x.estado==='Cerrado'?'C':'A')+'</td></tr>'});
   return h+'</tbody></table>'
@@ -614,6 +614,22 @@ function hkHTML(){
 const HK_HEAD=['Nombre','Fecha apert','NCm/NCM','Sección detección','Seccion Resolucion','Resumen no conformidades','1. Resumen no conformidades','2.Resumen no conformidades','3.Resumen no conformidades','Analisis de causas','1.Analisis de causas','2.Analisis de causas','3.Analisis de causas','Acciones correctivas/Preventivas a implantar','1.Acciones correctivas/Preventivas a implantar','2.Acciones correctivas/Preventivas a implantar','3.Acciones correctivas/Preventivas a implantar','Responsable','Fecha prevista','Fecha Real','Estado','Imagen Calidad','Comentarios'];
 const HK_DATECOLS=[1,18,19];
 const HK_WIDTHS=[18,12,10,18,18,36,10,10,10,30,10,10,10,36,10,10,10,20,13,12,8,14,36];
+function hkStats(l){const ce=l.filter(x=>x.estado==='Cerrado').length,ab=l.length-ce,fp=l.filter(isOverdue).length;return{total:l.length,ab:ab,ce:ce,fp:fp,pc:l.length?Math.round(100*ce/l.length):0}}
+function hkResumenData(){
+  const all=S.partes.filter(x=>origenOf(x)==='Housekeeping'),sel=hkList();
+  const meses=[...new Set(all.map(x=>String(x.fecha).slice(0,7)))].sort();
+  const porMes=meses.map(m=>Object.assign({mes:m},hkStats(all.filter(x=>String(x.fecha).slice(0,7)===m))));
+  const ds=[...new Set(sel.map(x=>deptOf(x)||'Sin departamento'))].sort();
+  const porDep=ds.map(d=>Object.assign({dep:d},hkStats(sel.filter(x=>(deptOf(x)||'Sin departamento')===d))));
+  return{sel:hkStats(sel),all:hkStats(all),porMes:porMes,porDep:porDep}
+}
+function hkResumenHTML(){
+  const r=hkResumenData(),mm=m=>m.split('-').reverse().join('/');
+  let h='<div class="rep-title">RESUMEN HOUSEKEEPING — '+(S.repAll?'TODOS LOS MESES':mm(S.repMes))+'</div><table class="rep" style="width:auto;margin-bottom:10px"><thead><tr><th>Total</th><th>Abiertas</th><th>Fuera de plazo</th><th>Cerradas</th><th>% cierre</th></tr></thead><tbody><tr><td class="c">'+r.sel.total+'</td><td class="c">'+r.sel.ab+'</td><td class="c">'+r.sel.fp+'</td><td class="c">'+r.sel.ce+'</td><td class="c">'+r.sel.pc+'%</td></tr></tbody></table>';
+  h+='<table class="rep" style="width:auto;margin-bottom:10px"><thead><tr><th>Mes (fecha apertura)</th><th>Abiertas en el mes</th><th>Siguen abiertas</th><th>Fuera de plazo</th><th>Cerradas</th><th>% cierre</th></tr></thead><tbody>'+(r.porMes.length?r.porMes.map(x=>'<tr><td>'+mm(x.mes)+'</td><td class="c">'+x.total+'</td><td class="c">'+x.ab+'</td><td class="c">'+x.fp+'</td><td class="c">'+x.ce+'</td><td class="c">'+x.pc+'%</td></tr>').join('')+'<tr style="font-weight:700"><td>Acumulado</td><td class="c">'+r.all.total+'</td><td class="c">'+r.all.ab+'</td><td class="c">'+r.all.fp+'</td><td class="c">'+r.all.ce+'</td><td class="c">'+r.all.pc+'%</td></tr>':'<tr><td colspan="6" class="c">Sin datos</td></tr>')+'</tbody></table>';
+  if(r.porDep.length)h+='<table class="rep" style="width:auto;margin-bottom:14px"><thead><tr><th>Sección resolución</th><th>Total</th><th>Abiertas</th><th>Fuera de plazo</th><th>Cerradas</th></tr></thead><tbody>'+r.porDep.map(x=>'<tr><td>'+esc(x.dep)+'</td><td class="c">'+x.total+'</td><td class="c">'+x.ab+'</td><td class="c">'+x.fp+'</td><td class="c">'+x.ce+'</td></tr>').join('')+'</tbody></table>';
+  return h+'<br>'
+}
 function hkExportRows(){
   return hkList().map(x=>[x.creadoPor||'',x.fecha||'',x.ncm||x.elemento||'',x.seccionDeteccion||x.zona||'',deptOf(x),x.resumen||'','','','',x.causas||'','','','',x.accion||'','','','',respName(x),x.fechaPrevista||'',x.fechaReal||'',x.estado==='Cerrado'?'C':'A','',[x.accionRealizada,x.comentarios].filter(Boolean).join(' · ')])
 }
@@ -626,7 +642,10 @@ function hkWorkbook(){
   const rg=XLSX.utils.decode_range(ws['!ref']);
   for(let R=1;R<=rg.e.r;R++)HK_DATECOLS.forEach(c=>{const a=XLSX.utils.encode_cell({r:R,c:c});if(ws[a]&&ws[a].t==='n')ws[a].z='dd/mm/yyyy'});
   ws['!cols']=HK_WIDTHS.map(w=>({wch:w}));
-  const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'Housekeeping');return wb
+  const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'Housekeeping');
+  const r=hkResumenData(),mm=m=>m.split('-').reverse().join('/');
+  const A=[['RESUMEN HOUSEKEEPING — '+(S.repAll?'TODOS LOS MESES':mm(S.repMes))],['Total','Abiertas','Fuera de plazo','Cerradas','% cierre'],[r.sel.total,r.sel.ab,r.sel.fp,r.sel.ce,r.sel.pc/100],[],['Mes (fecha apertura)','Abiertas en el mes','Siguen abiertas','Fuera de plazo','Cerradas','% cierre']].concat(r.porMes.map(x=>[mm(x.mes),x.total,x.ab,x.fp,x.ce,x.pc/100]),[['Acumulado',r.all.total,r.all.ab,r.all.fp,r.all.ce,r.all.pc/100],[],['Sección resolución','Total','Abiertas','Fuera de plazo','Cerradas']],r.porDep.map(x=>[x.dep,x.total,x.ab,x.fp,x.ce]));
+  const w2=XLSX.utils.aoa_to_sheet(A);w2['!cols']=[{wch:26},{wch:18},{wch:16},{wch:15},{wch:12},{wch:10}];XLSX.utils.book_append_sheet(wb,w2,'Resumen');return wb
 }
 async function hkCopy(){
   const n=hkExportRows().length;if(!n){toast('No hay filas en ese periodo');return}
