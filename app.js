@@ -405,7 +405,7 @@ function resumenInc(){
   else tit='todo el histórico';
   let l=S.partes.filter(x=>(S.resOrig==='Todos'||origenOf(x)===S.resOrig)&&(!r||(String(x.fecha).slice(0,10)>=r.inicio&&String(x.fecha).slice(0,10)<=r.limite)));
   const ab=l.filter(x=>x.estado==='Abierto'),fp=ab.filter(isOverdue),pv=l.filter(x=>x.estado==='Realizado'),ce=l.filter(x=>x.estado==='Cerrado');
-  let h='<h3>Resumen de incidencias</h3><div class="row"><div class="grow"><select data-set="resPer">'+[['sem','Esta semana'],['quin','Esta quincena'],['mes','Este mes'],['mesAnt','Mes anterior'],['otro','Elegir mes…'],['todo','Todo el histórico']].map(o=>'<option value="'+o[0]+'" '+(S.resPer===o[0]?'selected':'')+'>'+o[1]+'</option>').join('')+'</select></div>'+(per==='otro'?'<div class="grow"><input type="month" data-set="resMes" value="'+esc(S.resMes)+'"></div>':'')+'</div>';
+  let h='<h3>Resumen de incidencias</h3><p class="muted small">Este periodo solo afecta a este resumen de incidencias. Para las revisiones pendientes de vidrios, usa «Periodo anterior» más abajo.</p><div class="row"><div class="grow"><select data-set="resPer">'+[['sem','Esta semana'],['quin','Esta quincena'],['mes','Este mes'],['mesAnt','Mes anterior'],['otro','Elegir mes…'],['todo','Todo el histórico']].map(o=>'<option value="'+o[0]+'" '+(S.resPer===o[0]?'selected':'')+'>'+o[1]+'</option>').join('')+'</select></div>'+(per==='otro'?'<div class="grow"><input type="month" data-set="resMes" value="'+esc(S.resMes)+'"></div>':'')+'</div>';
   h+='<div class="chips">'+['Todos','Vidrios','Housekeeping'].map(x=>'<button class="'+(S.resOrig===x?'on':'')+'" data-act="setResOrig" data-o="'+x+'">'+(x==='Todos'?'Vidrios + Housekeeping':x)+'</button>').join('')+'</div>';
   if(r)h+='<p class="muted small">Incidencias abiertas (creadas) '+tit+': '+fmtD(r.inicio)+' – '+fmtD(r.limite)+'</p>';else h+='<p class="muted small">Incidencias de '+tit+'</p>';
   h+='<div class="kpis"><div class="kpi"><b>'+l.length+'</b><span>Total</span></div><div class="kpi warn"><b>'+ab.length+'</b><span>Abiertas</span></div><div class="kpi bad"><b>'+fp.length+'</b><span>Fuera de plazo</span></div><div class="kpi"><b>'+pv.length+'</b><span>Por validar</span></div><div class="kpi ok"><b>'+ce.length+'</b><span>Cerradas</span></div></div>';
@@ -423,7 +423,7 @@ function vInicio(){
   h+='<div class="kpis"><div class="kpi warn"><b>'+abiertos.length+'</b><span>Incidencias abiertas</span></div><div class="kpi bad"><b>'+venc.length+'</b><span>Fuera de plazo</span></div><div class="kpi"><b>'+porVal.length+'</b><span>Por validar (calidad)</span></div>'+(cal||S.isAdmin?'<div class="kpi warn"><b>'+pend+'</b><span>Revisiones de vidrios pendientes</span></div><div class="kpi bad"><b>'+vp+'</b><span>Sin hacer del periodo anterior</span></div>':'')+'</div>';
   if(cal||S.isAdmin){
     h+=resumenInc();
-    h+='<h3>Revisión de vidrios (periodo actual)</h3>';
+    h+='<h3>Revisión de vidrios ('+(S.inOff?'periodo anterior':'periodo actual')+')</h3>';
     const off=S.inOff;
     h+='<p class="muted small">'+(off?'Lo que quedó sin hacer del periodo anterior.':'Lo que toca auditar ahora, por periodicidad.')+' Pulsa «Revisar» para ir a esa zona solo con lo pendiente.</p>';
     h+='<div class="chips"><button class="'+(!off?'on':'')+'" data-act="setInOff" data-o="0">Periodo actual</button><button class="'+(off?'on':'')+'" data-act="setInOff" data-o="-1">Periodo anterior</button></div>';
