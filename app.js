@@ -43,7 +43,7 @@ async function processRef(file){const c=await readImage(file,420);const t=await 
 const DEFAULT_SECC=['Mezclas','Envasado','Almacén','Taller de mantenimiento'];
 const S={db:null,auth:{step:'email',email:''},started:false,account:null,emails:[],siteId:null,driveId:null,fatal:null,isAdmin:false,personas:[],deptos:[],puntos:[],revs:{},partes:[],
  config:{plazoDias:14,edicion:'Edición 1',desde:'2026-10-01',respDefault:'',dptoDefault:'',seccionesDeteccion:DEFAULT_SECC,validarHK:false},
- loaded:{},persona:null,tab:'inicio',linea:null,perF:'Todas',inPer:'Todas',resPer:'mes',resMes:todayISO().slice(0,7),resOrig:'Todos',soloPend:true,off:0,
+ loaded:{},persona:null,tab:'inicio',linea:null,perF:'Todas',inPer:'Todas',inOff:0,resPer:'mes',resMes:todayISO().slice(0,7),resOrig:'Todos',soloPend:true,off:0,
  fEstado:'Abierto',fResp:null,fOrigen:'Todos',fDpto:'Todos',fMes:'',focus:null,
  repTab:'hoja',repLinea:null,repMes:todayISO().slice(0,7),repAll:false,repOpen:false,rep:{key:'',revs:[],loading:false},
  ajLinea:'Todas',nombreSugerido:'',actor:null};
@@ -85,7 +85,7 @@ const activos=l=>S.puntos.filter(p=>p.activo!==false&&(!l||p.linea===l));
 const isOverdue=x=>x.estado==='Abierto'&&x.fechaPrevista&&x.fechaPrevista<todayISO();
 function progress(l){const a=activos(l);let d=0;a.forEach(p=>{if(statOf(p,0).rev)d++});return{done:d,total:a.length}}
 const PERS=['Semanal','Quincenal','Mensual'];
-function pendPer(l,per){const a=activos(l).filter(p=>(per==='Todas'||(p.per||'Mensual')===per));let d=0,lim='';a.forEach(p=>{const st=statOf(p,0);if(st.rev)d++;else if(!lim||st.per.limite<lim)lim=st.per.limite});return{total:a.length,done:d,pend:a.length-d,lim:lim}}
+function pendPer(l,per,off){off=off||0;const a=activos(l).filter(p=>(per==='Todas'||(p.per||'Mensual')===per));let d=0,lim='',tt=0;a.forEach(p=>{const st=statOf(p,off);if(off&&st.per.inicio<S.config.desde)return;tt++;if(st.rev)d++;else if(!lim||st.per.limite<lim)lim=st.per.limite});return{total:tt,done:d,pend:tt-d,lim:lim}}
 const diasHasta=iso=>Math.round((new Date(iso+'T00:00:00')-new Date(todayISO()+'T00:00:00'))/864e5);
 const limTxt=iso=>{if(!iso)return '';const n=diasHasta(iso);return n<0?'vencido':n===0?'vence hoy':n===1?'vence mañana':'vence en '+n+' días (hasta '+fmtS(iso)+')'};
 function vencidasPrev(l){let n=0;activos(l).forEach(p=>{const s=statOf(p,-1);if(!s.rev&&s.per.inicio>=S.config.desde)n++});return n}
@@ -424,16 +424,23 @@ function vInicio(){
   if(cal||S.isAdmin){
     h+=resumenInc();
     h+='<h3>Revisión de vidrios (periodo actual)</h3>';
-    h+='<p class="muted small">Lo que toca auditar ahora, por periodicidad. Pulsa «Revisar» para ir a esa zona solo con lo pendiente.</p>';
+    const off=S.inOff;
+    h+='<p class="muted small">'+(off?'Lo que quedó sin hacer del periodo anterior.':'Lo que toca auditar ahora, por periodicidad.')+' Pulsa «Revisar» para ir a esa zona solo con lo pendiente.</p>';
+    h+='<div class="chips"><button class="'+(!off?'on':'')+'" data-act="setInOff" data-o="0">Periodo actual</button><button class="'+(off?'on':'')+'" data-act="setInOff" data-o="-1">Periodo anterior</button></div>';
     h+='<div class="chips">'+['Todas'].concat(PERS).map(x=>'<button class="'+(x===S.inPer?'on':'')+'" data-act="setInPer" data-p="'+x+'">'+(x==='Todas'?'Todas':x==='Mensual'?'Mensuales':x==='Semanal'?'Semanales':'Quincenales')+'</button>').join('')+'</div>';
+    let hayAlgo=false;
     PERS.filter(per=>S.inPer==='Todas'||S.inPer===per).forEach(per=>{
-      const pr=periodFor(per,new Date(),0),zs=lineasList().map(l=>Object.assign({l:l},pendPer(l,per))).filter(z=>z.total);
+      const pr=periodFor(per,new Date(),off),zs=lineasList().map(l=>Object.assign({l:l},pendPer(l,per,off))).filter(z=>z.total);
       if(!zs.length)return;
       const pend=zs.reduce((n,z)=>n+z.pend,0),tt=zs.reduce((n,z)=>n+z.total,0);
-      h+='<div class="card" style="border-left:5px solid '+(pend?(diasHasta(pr.limite)<=2?'#c0301c':'#d98a00'):'#0a7a46')+'"><div class="row"><b class="grow" style="font-size:16px">'+({Semanal:'SEMANAL',Quincenal:'QUINCENAL',Mensual:'MENSUAL'}[per])+'</b><span class="chip '+(pend?'pend':'ok')+'">'+(pend?pend+' pendientes':'✔ al día')+'</span></div><div class="muted small">Periodo: '+fmtD(pr.inicio)+' – '+fmtD(pr.limite)+' · '+limTxt(pr.limite)+' · '+(tt-pend)+' de '+tt+' hechas</div>';
-      zs.sort((x,y)=>(x.pend?0:1)-(y.pend?0:1)||y.pend-x.pend).forEach(z=>{
-        h+='<div class="row" style="margin-top:8px;padding-top:8px;border-top:1px solid #e3e6ee"><span class="grow">'+esc(lineaLabel(z.l))+'</span><span class="muted small">'+z.done+'/'+z.total+'</span>'+(z.pend?'<button class="b sm pri" data-act="irLinea" data-l="'+esc(z.l)+'" data-p="'+per+'">Revisar</button>':'<span class="chip ok">✔</span>')+'</div>'});
+      if(off&&!pend)return;
+      hayAlgo=true;
+      h+='<div class="card" style="border-left:5px solid '+(pend?((off||diasHasta(pr.limite)<=2)?'#c0301c':'#d98a00'):'#0a7a46')+'"><div class="row"><b class="grow" style="font-size:16px">'+({Semanal:'SEMANAL',Quincenal:'QUINCENAL',Mensual:'MENSUAL'}[per])+'</b><span class="chip '+(pend?(off?'bad':'pend'):'ok')+'">'+(pend?pend+' pendientes':'✔ al día')+'</span></div><div class="muted small">Periodo: '+fmtD(pr.inicio)+' – '+fmtD(pr.limite)+(off?' · terminó':' · '+limTxt(pr.limite))+' · '+(tt-pend)+' de '+tt+' hechas</div>';
+      zs.filter(z=>z.pend).sort((x,y)=>y.pend-x.pend).forEach(z=>{
+        h+='<div class="row" style="margin-top:8px;padding-top:8px;border-top:1px solid #e3e6ee"><span class="grow">'+esc(lineaLabel(z.l))+'</span><span class="muted small">'+z.pend+' pendientes · '+z.done+'/'+z.total+'</span><button class="b sm pri" data-act="irLinea" data-l="'+esc(z.l)+'" data-p="'+per+'">Revisar</button></div>'});
+      if(!pend)h+='<div class="muted small" style="margin-top:6px">Todas las zonas al día ✔</div>';
       h+='</div>'});
+    if(!hayAlgo)h+='<div class="empty">'+(off?'No quedó nada pendiente del periodo anterior ✔':'Aún no hay puntos con ese filtro.')+'</div>';
     {const vp2=lineasList().filter(l=>vencidasPrev(l));if(vp2.length)h+='<div class="warnbox">Sin hacer del periodo anterior: '+vp2.map(l=>esc(lineaLabel(l))+' ('+vencidasPrev(l)+')').join(' · ')+'</div>'}
     if(porVal.length)h+='<h3>Por validar (Apto calidad)</h3>'+porVal.map(x=>parteCard(x)).join('');
     if(venc.length)h+='<h3>Fuera de plazo</h3>'+venc.map(x=>parteCard(x)).join('');
@@ -911,8 +918,9 @@ document.addEventListener('click',async e=>{
   if(a==='setActor'){const v=val('actorSel');if(!v){toast('Elige tu nombre');return}S.actor=v;try{sessionStorage.setItem('aud_actor',v);localStorage.setItem('aud_actor_last',v)}catch(e){}render();return}
   if(a==='backup'){try{saveFile('copia_auditorias_'+todayISO()+'.json',JSON.stringify(await exportAll(),null,1),'application/json')}catch(er){toast('No se pudo generar la copia')}return}
   if(a==='setResOrig'){S.resOrig=d.o;render();return}
+  if(a==='setInOff'){S.inOff=Number(d.o)||0;render();return}
   if(a==='setInPer'){S.inPer=(S.inPer===d.p&&d.p!=='Todas')?'Todas':d.p;render();return}
-  if(a==='irLinea'){S.linea=d.l;S.perF=d.p||S.inPer;S.off=0;S.soloPend=true;S.tab='revision';render();window.scrollTo(0,0);return}
+  if(a==='irLinea'){S.linea=d.l;S.perF=d.p||S.inPer;S.off=S.inOff;S.soloPend=true;S.tab='revision';render();window.scrollTo(0,0);return}
   if(a==='setLinea'){S.linea=d.l;render();return}
   if(a==='imgs'){const pt=S.puntos.find(p=>p.id===d.pid);if(pt&&pt.fotos&&pt.fotos.length)showPaths(pt.fotos.map(f=>'ref/'+f));return}
   if(a==='foto'){showPaths([d.f]);return}
