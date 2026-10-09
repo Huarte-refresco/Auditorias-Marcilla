@@ -85,10 +85,10 @@ const activos=l=>S.puntos.filter(p=>p.activo!==false&&(!l||p.linea===l));
 const isOverdue=x=>x.estado==='Abierto'&&x.fechaPrevista&&x.fechaPrevista<todayISO();
 function progress(l){const a=activos(l);let d=0;a.forEach(p=>{if(statOf(p,0).rev)d++});return{done:d,total:a.length}}
 const PERS=['Semanal','Quincenal','Mensual'];
-function pendPer(l,per,off){off=off||0;const a=activos(l).filter(p=>(per==='Todas'||(p.per||'Mensual')===per));let d=0,lim='',tt=0;a.forEach(p=>{const st=statOf(p,off);if(off&&st.per.inicio<S.config.desde)return;tt++;if(st.rev)d++;else if(!lim||st.per.limite<lim)lim=st.per.limite});return{total:tt,done:d,pend:tt-d,lim:lim}}
+function pendPer(l,per,off){off=off||0;const a=activos(l).filter(p=>(per==='Todas'||(p.per||'Mensual')===per));let d=0,lim='',tt=0;a.forEach(p=>{const st=statOf(p,off);if(off&&st.per.limite<S.config.desde)return;tt++;if(st.rev)d++;else if(!lim||st.per.limite<lim)lim=st.per.limite});return{total:tt,done:d,pend:tt-d,lim:lim}}
 const diasHasta=iso=>Math.round((new Date(iso+'T00:00:00')-new Date(todayISO()+'T00:00:00'))/864e5);
 const limTxt=iso=>{if(!iso)return '';const n=diasHasta(iso);return n<0?'vencido':n===0?'vence hoy':n===1?'vence mañana':'vence en '+n+' días (hasta '+fmtS(iso)+')'};
-function vencidasPrev(l){let n=0;activos(l).forEach(p=>{const s=statOf(p,-1);if(!s.rev&&s.per.inicio>=S.config.desde)n++});return n}
+function vencidasPrev(l){let n=0;activos(l).forEach(p=>{const s=statOf(p,-1);if(!s.rev&&s.per.limite>=S.config.desde)n++});return n}
 const secciones=()=>S.config.seccionesDeteccion&&S.config.seccionesDeteccion.length?S.config.seccionesDeteccion:DEFAULT_SECC;
 const dptoDefault=()=>S.config.dptoDefault||(personaById(S.config.respDefault)||{}).departamento||(deptByName('Mantenimiento')?'Mantenimiento':(S.deptos[0]||{}).nombre)||'';
 const optsDeptos=(sel)=>'<option value="">—</option>'+S.deptos.slice().sort((a,b)=>a.nombre.localeCompare(b.nombre)).map(d=>'<option '+(d.nombre===sel?'selected':'')+'>'+esc(d.nombre)+'</option>').join('');
