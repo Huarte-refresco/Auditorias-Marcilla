@@ -481,8 +481,8 @@ function ptRow(pt,st,ca){
   const r=st.rev,nf=(pt.fotos||[]).length,th=nf?'ref/'+thumbName(pt.fotos[0]):'';
   const ph=th?'<img data-ph="'+esc(th)+'" data-act="imgs" data-pid="'+esc(pt.id)+'" alt="">'+(nf>1?'<div class="n">'+nf+' fotos</div>':''):'<div class="nofoto">Sin foto</div>';
   let cls='s-pend',res;
-  if(!r){res=ca?'<div class="btns"><button class="b ok" data-act="ok" data-pid="'+esc(pt.id)+'">OK</button><button class="b bad" data-act="nook" data-pid="'+esc(pt.id)+'">NO OK</button></div>':'<span class="chip pend">Pendiente</span>'}
-  else if(r.resultado==='OK'){cls='s-ok';res='<span class="chip ok">✔ OK</span> <span class="muted small">'+fmtD(r.fecha)+' · '+esc(r.por)+'</span>'+(ca?' <button class="lnk small" data-act="undo" data-rid="'+esc(st.id)+'">Deshacer</button>':'')}
+  if(!r){res=ca?'<div class="btns"><button class="b ok" data-act="ok" data-pid="'+esc(pt.id)+'">OK</button><button class="b bad" data-act="nook" data-pid="'+esc(pt.id)+'">NO OK</button></div>'+(esSuper()?'<button class="lnk small" data-act="posteriori" data-pid="'+esc(pt.id)+'">Registrar a posteriori</button>':''):'<span class="chip pend">Pendiente</span>'}
+  else if(r.resultado==='OK'){cls='s-ok';res='<span class="chip ok">✔ OK</span> <span class="muted small">'+fmtD(r.fecha)+' · '+esc(r.por)+'</span>'+(r.aPosteriori?' <span class="chip pend">registrada a posteriori</span>':'')+(ca?' <button class="lnk small" data-act="undo" data-rid="'+esc(st.id)+'">Deshacer</button>':'')}
   else{cls='s-bad';res='<span class="chip bad">✖ NO OK</span> <span class="muted small">'+fmtD(r.fecha)+' · '+esc(r.por)+' · ACP:</span> <button class="lnk small" data-act="verparte" data-id="'+esc(r.parteId||'')+'">'+esc(r.parteId||'—')+'</button>'+(ca?' <button class="lnk small" data-act="undo" data-rid="'+esc(st.id)+'">Deshacer</button>':'')}
   return '<div class="pt '+cls+'"><div class="ph">'+ph+'</div><div class="pb"><div class="rev">'+esc(pt.rev)+'</div><div class="meta">'+(pt.mat?'<span>Material: '+esc(pt.mat)+'</span>':'')+(pt.cant?'<span>Cantidad: '+esc(pt.cant)+'</span>':'')+'<span class="chip">'+esc(pt.per)+' · '+fmtS(st.per.inicio)+'–'+fmtS(st.per.limite)+'</span></div>'+res+'</div></div>'
 }
@@ -588,7 +588,7 @@ function hojaHTML(linea,mes,revs){
       const r=byK[pt.id+'_'+sp.inicio],ok=r&&r.resultado==='OK',no=r&&r.resultado==='NO OK';
       const cab=i===0?'<td rowspan="'+n+'">'+(th?'<img data-ph="'+esc(th)+'" alt="">':'')+'</td><td rowspan="'+n+'">'+esc(pt.rev)+'</td><td rowspan="'+n+'">'+esc(pt.mat)+'</td><td rowspan="'+n+'">'+esc(pt.cant)+'</td><td class="c" rowspan="'+n+'">'+esc(String(pt.per).toUpperCase())+'</td>':'';
       const per=pt.per==='Mensual'?'':'<br><span style="color:#777;font-size:9.5px">('+(pt.per==='Semanal'?'sem. ':'')+fmtS(sp.inicio)+'–'+fmtS(sp.limite)+')</span>';
-      h+='<tr>'+cab+'<td class="c">'+(r?fmtS(String(r.fecha).slice(0,10)):'')+per+'</td><td class="c okc">'+(ok?'✔':'')+'</td><td class="c nokc">'+(no?'✖':'')+'</td><td class="c">'+(no?esc(r.parteId||''):'')+'</td><td class="c">'+(r?esc(first(r.por)):'')+'</td></tr>'
+      h+='<tr>'+cab+'<td class="c">'+(r?fmtS(String(r.fecha).slice(0,10)):'')+(r&&r.aPosteriori?'<br><span style="color:#B8400C;font-size:9.5px">(a posteriori)</span>':'')+per+'</td><td class="c okc">'+(ok?'✔':'')+'</td><td class="c nokc">'+(no?'✖':'')+'</td><td class="c">'+(no?esc(r.parteId||''):'')+'</td><td class="c">'+(r?esc(first(r.por)):'')+'</td></tr>'
     })
   });
   return h+'</tbody></table>'
@@ -767,6 +767,16 @@ async function doOK(pt,st){
   const p=me();
   await S.db.doc('revisiones/'+st.id).set({pid:pt.id,linea:pt.linea,equipo:pt.equipo,per:pt.per,inicio:st.per.inicio,limite:st.per.limite,resultado:'OK',fecha:nowISO(),por:actorName(),porId:p.id})
 }
+function openPosteriori(pt,st){
+  if(!esSuper())return;
+  openSheet('Registrar a posteriori','<div class="kv"><b>'+esc(pt.linea+' · '+pt.equipo)+'</b><br>'+esc(pt.rev)+'<br><span class="muted small">Periodo '+fmtD(st.per.inicio)+' – '+fmtD(st.per.limite)+'</span></div><div class="warnbox">Queda registrada como «a posteriori», con tu nombre, el día en que la registras y el motivo. Aparece marcada en el informe.</div><label>Fecha en la que se hizo la revisión *</label><input type="date" id="f_fp" min="'+st.per.inicio+'" max="'+todayISO()+'" value="'+(st.per.limite<todayISO()?st.per.limite:todayISO())+'"><label>Resultado</label><select id="f_rs"><option>OK</option></select><label>Motivo del registro tardío *</label><textarea id="f_mt" rows="2" placeholder="Ej.: se hizo en papel y no se apuntó / parada de línea"></textarea><p class="muted small">Si hubo un problema (NO OK), usa el botón NO OK normal para abrir el parte.</p>',{label:'Registrar',onSave:async()=>{
+    const f=val('f_fp'),mt=val('f_mt').trim(),p=me();
+    if(!f||!mt){toast('Indica la fecha y el motivo');return false}
+    if(f>todayISO()){toast('La fecha no puede ser futura');return false}
+    await S.db.doc('revisiones/'+st.id).set({pid:pt.id,linea:pt.linea,equipo:pt.equipo,per:pt.per,inicio:st.per.inicio,limite:st.per.limite,resultado:'OK',fecha:f+'T12:00:00.000Z',por:actorName(),porId:p?p.id:'',aPosteriori:true,registradoEn:nowISO(),obs:'Registrada a posteriori el '+fmtD(todayISO())+' por '+actorName()+'. Motivo: '+mt});
+    return{after:()=>toast('Revisión registrada a posteriori')}
+  }})
+}
 function openNoOk(pt,st){
   const prev=iso(addDays(new Date(),Number(S.config.plazoDias)||14));
   openSheet('NO OK · crear parte (ACP)','<div class="kv"><b>'+esc(pt.linea+' · '+pt.equipo)+'</b><br>'+esc(pt.rev)+'</div><label>Elemento *</label><input id="f_elem" value="'+esc(pt.equipo)+'"><label>Acción a realizar *</label><textarea id="f_accion" rows="3" placeholder="Ej.: sustituir metacrilato roto de la puerta"></textarea><label>Departamento que lo resuelve *</label><select id="f_dpto">'+optsDeptos(dptoDefault())+'</select><label>Responsable concreto (opcional)</label><select id="f_resp"><option value="">—</option>'+S.personas.map(p=>'<option value="'+esc(p.id)+'">'+esc(p.nombre)+'</option>').join('')+'</select><label>Fecha prevista *</label><input type="date" id="f_prev" value="'+prev+'">'+photoField('f_foto','Foto de la no conformidad',true),{label:'Crear parte',cls:'bad',wire:()=>wirePhoto('f_foto'),onSave:async()=>{
@@ -907,6 +917,7 @@ document.addEventListener('click',async e=>{
   if(a==='imgs'){const pt=S.puntos.find(p=>p.id===d.pid);if(pt&&pt.fotos&&pt.fotos.length)showPaths(pt.fotos.map(f=>'ref/'+f));return}
   if(a==='foto'){showPaths([d.f]);return}
   if(a==='newHK'){if(!canAudit())return;openHK();return}
+  if(a==='posteriori'){const pt=S.puntos.find(p=>p.id===d.pid);if(pt)openPosteriori(pt,statOf(pt,S.off));return}
   if(a==='ok'||a==='nook'){const pt=S.puntos.find(p=>p.id===d.pid);if(!pt)return;const st=statOf(pt,S.off);
     if(a==='ok'){t.disabled=true;try{await doOK(pt,st)}catch(x){toast(errMsg(x));t.disabled=false}}else openNoOk(pt,st);return}
   if(a==='undo'){undoRev(d.rid);return}
