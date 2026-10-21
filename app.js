@@ -53,6 +53,9 @@ const me=()=>{const r=meReal();return (r&&r.admin&&S.viewAs)?(personaById(S.view
 const esCalP=p=>!!p&&(p.rol==='Calidad'||p.departamento==='Calidad'||/nuria|asun\S*\s+garde/i.test(p.nombre||''));
 const isCal=()=>esCalP(me());
 const canAudit=()=>isCal()||S.isAdmin;
+const verAnterior=()=>esSuper()||S.isAdmin;
+const VID_DPTO=()=>deptByName('Mantenimiento')?'Mantenimiento':(dptoDefault()||'Mantenimiento');
+const canSeeVidrios=()=>{if(canAudit())return true;const p=me();return !!p&&(p.departamento===VID_DPTO()||p.rol==='Mantenimiento')};
 const personaById=id=>S.personas.find(p=>p.id===id);
 const deptByName=n=>S.deptos.find(d=>d.nombre===n)||null;
 const origenOf=x=>x.origen||'Vidrios';
@@ -350,6 +353,7 @@ function doRender(){
   const ms=miembrosDe(p);if(ms.length&&!ms.includes(S.actor)){app.innerHTML=vQuienEres(p,ms);return}
   if(S.tab==='ajustes'&&!S.isAdmin)S.tab='inicio';
   if(S.tab==='partes'&&!canAudit()&&!S.focus)S.tab='inicio';
+  if(S.tab==='revision'&&!canSeeVidrios())S.tab='inicio';
   if(S.tab==='informe')ensureRep();
   const V={inicio:vInicio,revision:vRevision,hk:vHK,partes:vPartes,informe:vInforme,ajustes:vAjustes};
   app.innerHTML=hdr()+'<main>'+V[S.tab]()+'</main>'+nav();
@@ -384,7 +388,7 @@ function nav(){
   const sup=canAudit(),p=me();
   const cnt=o=>S.partes.filter(x=>origenOf(x)===o&&x.estado==='Abierto'&&(esMio(x)||canResolve(x))).length;
   const bV=sup?0:cnt('Vidrios'),bH=sup?0:cnt('Housekeeping');
-  const tabs=[['inicio','🏠','Inicio','',0],['revision','🔍','Vidrios',bV],['hk','📝','Housekeeping',bH]];
+  const tabs=[['inicio','🏠','Inicio','',0]];if(canSeeVidrios())tabs.push(['revision','🔍','Vidrios',bV]);tabs.push(['hk','📝','Housekeeping',bH]);
   if(sup)tabs.push(['partes','🛠️','Incidencias',S.partes.filter(x=>x.estado==='Realizado').length]);
   tabs.push(['informe','🖨️','Informe',0]);if(S.isAdmin)tabs.push(['ajustes','⚙️','Ajustes',0]);
   return '<nav class="nav">'+tabs.map(t=>'<button class="'+(S.tab===t[0]?'on':'')+'" data-act="tab" data-tab="'+t[0]+'"><span class="ic">'+t[1]+'</span>'+t[2]+(t[3]?'<span class="bd">'+t[3]+'</span>':'')+'</button>').join('')+'</nav>'
@@ -420,13 +424,14 @@ function vInicio(){
   const mis=abiertos.filter(esMio);
   let pend=0,vp=0;lineasList().forEach(l=>{const g=progress(l);pend+=g.total-g.done;vp+=vencidasPrev(l)});
   let h='<h2>Hola, '+esc(first(actorName()||p.nombre))+'</h2><p class="muted">'+esc(p.rol)+(p.departamento?' · '+esc(p.departamento):'')+'</p>';
-  h+='<div class="kpis"><div class="kpi warn"><b>'+abiertos.length+'</b><span>Incidencias abiertas</span></div><div class="kpi bad"><b>'+venc.length+'</b><span>Fuera de plazo</span></div><div class="kpi"><b>'+porVal.length+'</b><span>Por validar (calidad)</span></div>'+(cal||S.isAdmin?'<div class="kpi warn"><b>'+pend+'</b><span>Revisiones de vidrios pendientes</span></div><div class="kpi bad"><b>'+vp+'</b><span>Sin hacer del periodo anterior</span></div>':'')+'</div>';
+  h+='<div class="kpis"><div class="kpi warn"><b>'+abiertos.length+'</b><span>Incidencias abiertas</span></div><div class="kpi bad"><b>'+venc.length+'</b><span>Fuera de plazo</span></div><div class="kpi"><b>'+porVal.length+'</b><span>Por validar (calidad)</span></div>'+(cal||S.isAdmin?'<div class="kpi warn"><b>'+pend+'</b><span>Revisiones de vidrios pendientes</span></div>'+(verAnterior()?'<div class="kpi bad"><b>'+vp+'</b><span>Sin hacer del periodo anterior</span></div>':'')+'':'')+'</div>';
   if(cal||S.isAdmin){
     h+=resumenInc();
     h+='<h3>Revisión de vidrios ('+(S.inOff?'periodo anterior':'periodo actual')+')</h3>';
+    if(!verAnterior())S.inOff=0;
     const off=S.inOff;
     h+='<p class="muted small">'+(off?'Lo que quedó sin hacer del periodo anterior.':'Lo que toca auditar ahora, por periodicidad.')+' Pulsa «Revisar» para ir a esa zona solo con lo pendiente.</p>';
-    h+='<div class="chips"><button class="'+(!off?'on':'')+'" data-act="setInOff" data-o="0">Periodo actual</button><button class="'+(off?'on':'')+'" data-act="setInOff" data-o="-1">Periodo anterior</button></div>';
+    if(verAnterior())h+='<div class="chips"><button class="'+(!off?'on':'')+'" data-act="setInOff" data-o="0">Periodo actual</button><button class="'+(off?'on':'')+'" data-act="setInOff" data-o="-1">Periodo anterior</button></div>';
     h+='<div class="chips">'+['Todas'].concat(PERS).map(x=>'<button class="'+(x===S.inPer?'on':'')+'" data-act="setInPer" data-p="'+x+'">'+(x==='Todas'?'Todas':x==='Mensual'?'Mensuales':x==='Semanal'?'Semanales':'Quincenales')+'</button>').join('')+'</div>';
     let hayAlgo=false;
     PERS.filter(per=>S.inPer==='Todas'||S.inPer===per).forEach(per=>{
@@ -441,12 +446,12 @@ function vInicio(){
       if(!pend)h+='<div class="muted small" style="margin-top:6px">Todas las zonas al día ✔</div>';
       h+='</div>'});
     if(!hayAlgo)h+='<div class="empty">'+(off?'No quedó nada pendiente del periodo anterior ✔':'Aún no hay puntos con ese filtro.')+'</div>';
-    {const vp2=lineasList().filter(l=>vencidasPrev(l));if(vp2.length)h+='<div class="warnbox">Sin hacer del periodo anterior: '+vp2.map(l=>esc(lineaLabel(l))+' ('+vencidasPrev(l)+')').join(' · ')+'</div>'}
+    {const vp2=verAnterior()?lineasList().filter(l=>vencidasPrev(l)):[];if(vp2.length)h+='<div class="warnbox">Sin hacer del periodo anterior: '+vp2.map(l=>esc(lineaLabel(l))+' ('+vencidasPrev(l)+')').join(' · ')+'</div>'}
     if(porVal.length)h+='<h3>Por validar (Apto calidad)</h3>'+porVal.map(x=>parteCard(x)).join('');
     if(venc.length)h+='<h3>Fuera de plazo</h3>'+venc.map(x=>parteCard(x)).join('');
   }else{
     h+='<h3>Lo que tienes pendiente</h3>';
-    [['Vidrios','revision','🔍'],['Housekeeping','hk','📝']].forEach(o=>{
+    [['Vidrios','revision','🔍'],['Housekeeping','hk','📝']].filter(o=>o[0]!=='Vidrios'||canSeeVidrios()).forEach(o=>{
       const l=abiertos.filter(x=>origenOf(x)===o[0]&&(esMio(x)||canResolve(x))),v=l.filter(isOverdue).length,prox=l.map(x=>x.fechaPrevista).filter(Boolean).sort()[0];
       h+='<div class="card" style="border-left:5px solid '+(v?'#c0301c':l.length?'#d98a00':'#0a7a46')+'"><div class="row"><b class="grow" style="font-size:16px">'+o[2]+' '+o[0]+'</b><span class="chip '+(l.length?(v?'bad':'pend'):'ok')+'">'+(l.length?l.length+' pendiente'+(l.length>1?'s':''):'✔ al día')+'</span></div>'+(l.length?'<div class="muted small">'+(v?v+' fuera de plazo · ':'')+(prox?'la más próxima vence el '+fmtD(prox):'')+'</div><p style="margin-top:8px"><button class="b pri sm" data-act="tab" data-tab="'+o[1]+'">Ver y cerrar</button></p>':'<div class="muted small">No tienes incidencias pendientes.</div>')+'</div>'});
   }
@@ -466,6 +471,7 @@ function misIncs(origen){
 function vRevision(){
   const ls=lineasList();if(!ls.length)return empty('No hay puntos en el catálogo.');
   if(!S.linea||!ls.includes(S.linea))S.linea=ls[0];
+  if(!verAnterior())S.off=0;
   const ca=canAudit();
   const pts=activos(S.linea).filter(x=>S.perF==='Todas'||x.per===S.perF).sort(byId);
   const rows=pts.map(pt=>({pt:pt,st:statOf(pt,S.off)}));
@@ -473,7 +479,7 @@ function vRevision(){
   const list=S.soloPend?rows.filter(r=>!r.st.rev):rows;
   let h='<h2>Revisión de vidrios y acrílicos</h2>'+misIncs('Vidrios')+'<h3>Revisión de puntos</h3>';
   h+=ls.length>8?'<label>Zona</label><select data-set="linea">'+ls.map(l=>'<option '+(l===S.linea?'selected':'')+'>'+esc(l)+'</option>').join('')+'</select>':'<div class="chips">'+ls.map(l=>'<button class="'+(l===S.linea?'on':'')+'" data-act="setLinea" data-l="'+esc(l)+'">'+esc(l)+'</button>').join('')+'</div>';
-  h+='<div class="row"><div class="grow"><select data-set="perF">'+['Todas','Semanal','Quincenal','Mensual'].map(x=>'<option '+(x===S.perF?'selected':'')+'>'+x+'</option>').join('')+'</select></div><div class="grow"><select data-set="off"><option value="0" '+(S.off===0?'selected':'')+'>Periodo actual</option><option value="-1" '+(S.off===-1?'selected':'')+'>Periodo anterior</option></select></div></div>';
+  h+='<div class="row"><div class="grow"><select data-set="perF">'+['Todas','Semanal','Quincenal','Mensual'].map(x=>'<option '+(x===S.perF?'selected':'')+'>'+x+'</option>').join('')+'</select></div><div class="grow"><select data-set="off"><option value="0" '+(S.off===0?'selected':'')+'>Periodo actual</option>'+(verAnterior()?'<option value="-1" '+(S.off===-1?'selected':'')+'>Periodo anterior</option>':'')+'</select></div></div>';
   h+='<p class="muted small">Periodo actual → '+PERS.map(per=>{const q=periodFor(per,new Date(),0);return '<b>'+per+'</b> '+fmtS(q.inicio)+'–'+fmtS(q.limite)}).join(' · ')+'</p>';
   h+='<label class="inl"><input type="checkbox" data-set="soloPend" '+(S.soloPend?'checked':'')+'> Mostrar solo pendientes</label>';
   {const pl=planosDe(S.linea);if(pl.length)h+='<div class="card"><div class="row"><b class="grow">🗺️ Plano · '+esc(S.linea)+'</b><button class="b sm" data-act="verPlano" data-l="'+esc(S.linea)+'">Ver en grande'+(pl.length>1?' ('+pl.length+')':'')+'</button></div><img data-ph="'+esc(thumbName(pl[0]))+'" data-act="verPlano" data-l="'+esc(S.linea)+'" alt="Plano" style="width:100%;max-height:150px;object-fit:cover;border-radius:8px;margin-top:8px;cursor:zoom-in"></div>'}
@@ -786,7 +792,7 @@ function openPosteriori(pt,st){
 }
 function openNoOk(pt,st){
   const prev=iso(addDays(new Date(),Number(S.config.plazoDias)||14));
-  openSheet('NO OK · crear parte (ACP)','<div class="kv"><b>'+esc(pt.linea+' · '+pt.equipo)+'</b><br>'+esc(pt.rev)+'</div><label>Elemento *</label><input id="f_elem" value="'+esc(pt.equipo)+'"><label>Acción a realizar *</label><textarea id="f_accion" rows="3" placeholder="Ej.: sustituir metacrilato roto de la puerta"></textarea><label>Departamento que lo resuelve *</label><select id="f_dpto">'+optsDeptos(dptoDefault())+'</select><label>Responsable concreto (opcional)</label><select id="f_resp"><option value="">—</option>'+S.personas.map(p=>'<option value="'+esc(p.id)+'">'+esc(p.nombre)+'</option>').join('')+'</select><label>Fecha prevista *</label><input type="date" id="f_prev" value="'+prev+'">'+photoField('f_foto','Foto de la no conformidad',true),{label:'Crear parte',cls:'bad',wire:()=>wirePhoto('f_foto'),onSave:async()=>{
+  openSheet('NO OK · crear parte (ACP)','<div class="kv"><b>'+esc(pt.linea+' · '+pt.equipo)+'</b><br>'+esc(pt.rev)+'</div><label>Elemento *</label><input id="f_elem" value="'+esc(pt.equipo)+'"><label>Acción a realizar *</label><textarea id="f_accion" rows="3" placeholder="Ej.: sustituir metacrilato roto de la puerta"></textarea><label>Departamento que lo resuelve</label><select id="f_dpto"><option>'+esc(VID_DPTO())+'</option></select><p class="muted small">Los vidrios los repara siempre Mantenimiento.</p><label>Responsable concreto (opcional)</label><select id="f_resp"><option value="">—</option>'+S.personas.map(p=>'<option value="'+esc(p.id)+'">'+esc(p.nombre)+'</option>').join('')+'</select><label>Fecha prevista *</label><input type="date" id="f_prev" value="'+prev+'">'+photoField('f_foto','Foto de la no conformidad',true),{label:'Crear parte',cls:'bad',wire:()=>wirePhoto('f_foto'),onSave:async()=>{
     const accion=val('f_accion').trim(),elem=val('f_elem').trim(),dpto=val('f_dpto'),resp=val('f_resp'),pv=val('f_prev'),ph=photos.f_foto,p=me();
     if(!accion||!elem||!dpto||!pv||!ph){toast('Rellena todos los campos y añade la foto');return false}
     const fid=uid(),id='V'+todayISO().slice(2).replace(/-/g,'')+'-'+Math.random().toString(36).slice(2,5).toUpperCase();
