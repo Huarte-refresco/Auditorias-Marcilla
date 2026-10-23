@@ -680,27 +680,26 @@ async function hkCopy(){
 }
 
 /* ---- Informe del holding: rellena su Excel (AUDIT HK + NCm_NCM) con las NC del mes ---- */
-const loadJS=src=>new Promise((res,rej)=>{if(document.querySelector('script[data-l="'+src+'"]'))return res();const sc=document.createElement('script');sc.src=src+'?v=20261023d';sc.dataset.l=src;sc.onload=res;sc.onerror=()=>rej(new Error(src));document.head.appendChild(sc)});
-function hkHold(){
+const loadJS=src=>new Promise((res,rej)=>{if(document.querySelector('script[data-l="'+src+'"]'))return res();const sc=document.createElement('script');sc.src=src+'?v=20261023e';sc.dataset.l=src;sc.onload=res;sc.onerror=()=>rej(new Error(src));document.head.appendChild(sc)});
+async function hkHold(){
   const mes=S.repMes;
   if(!mes||S.repAll){toast('Elige un mes concreto (desmarca «Todos los meses»)');return}
-  const inp=document.createElement('input');inp.type='file';inp.accept='.xlsm,.xlsx';
-  inp.onchange=async()=>{
-    const f=inp.files&&inp.files[0];if(!f)return;
-    toast('Generando informe…');
-    try{
-      await loadJS('jszip.min.js');await loadJS('hkholding.js');
-      const ncs=S.partes.filter(x=>origenOf(x)==='Housekeeping').map(x=>({id:x.id,fecha:x.fecha,ncm:x.ncm||x.elemento,tipo:x.tipo,seccionDeteccion:x.seccionDeteccion||x.zona,dpto:deptOf(x),resumen:x.resumen,causas:x.causas,accion:x.accion,respNombre:respName(x),fechaPrevista:x.fechaPrevista,fechaReal:x.fechaReal,estado:x.estado,creadoPor:x.creadoPor}));
-      const buf=await f.arrayBuffer();
-      let r=await hkFill(buf,{mes:mes,ncs:ncs});
-      if(r.hadData){if(!confirm('El mes '+mes.split('-').reverse().join('/')+' ya tiene datos en la hoja AUDIT HK. ¿Sobrescribirlos con lo registrado en la app?'))return;r=await hkFill(buf,{mes:mes,ncs:ncs,overwrite:true})}
-      const base=f.name.replace(/\.(xlsm|xlsx)$/i,'');
-      saveFile(base+'_'+mes+'.xlsm',r.data,'application/vnd.ms-excel.sheet.macroEnabled.12');
-      const R=r.resumen;
-      openSheet('Informe del holding generado','<p><b>'+R.ncs+'</b> no conformidades de '+mes.split('-').reverse().join('/')+' · <b>'+R.nuevasNCm+'</b> filas nuevas en NCm_NCM'+(R.yaExistian?' ('+R.yaExistian+' ya estaban)':'')+' · <b>'+R.puntosDescontados+'</b> punto(s) descontados en AUDIT HK.</p>'+(r.warnings.length?'<ul>'+r.warnings.map(w=>'<li>'+esc(w)+'</li>').join('')+'</ul>':'')+'<p class="muted small">Ábrelo en Excel (habilita macros si lo pide): INFORME AUDIT INTERNA y Analisis_Tendencias se recalculan solos.</p>',{noSave:true})
-    }catch(e){console.error(e);toast('No se pudo generar: '+(e.message||e))}
-  };
-  inp.click()
+  toast('Generando informe…');
+  try{
+    await loadJS('jszip.min.js');await loadJS('hkholding.js');
+    const desde=String(S.config.desde||'2026-10-01').slice(0,7);
+    const hkp=S.partes.filter(x=>origenOf(x)==='Housekeeping');
+    const ncs=hkp.map(x=>({id:x.id,fecha:x.fecha,ncm:x.ncm||x.elemento,tipo:x.tipo,seccionDeteccion:x.seccionDeteccion||x.zona,dpto:deptOf(x),resumen:x.resumen,causas:x.causas,accion:x.accion,respNombre:respName(x),fechaPrevista:x.fechaPrevista,fechaReal:x.fechaReal,estado:x.estado,creadoPor:x.creadoPor}));
+    const meses=[...new Set(ncs.map(n=>String(n.fecha).slice(0,7)).filter(m=>m>=desde&&m<=mes))];
+    let buf;
+    const rs=await fetch('plantilla_HK.xlsm?v='+Date.now()).catch(()=>null);
+    if(rs&&rs.ok)buf=await rs.arrayBuffer();
+    else{buf=await new Promise((res,rej)=>{const inp=document.createElement('input');inp.type='file';inp.accept='.xlsm,.xlsx';inp.onchange=()=>inp.files[0]?inp.files[0].arrayBuffer().then(res,rej):rej(new Error('Sin archivo'));inp.click()})}
+    const r=await hkFill(buf,{mes:mes,meses:meses,ncs:ncs});
+    saveFile('HK-MARCILLA_'+mes+'.xlsm',r.data,'application/vnd.ms-excel.sheet.macroEnabled.12');
+    const R=r.resumen;
+    openSheet('Informe del holding generado','<p><b>'+R.ncs+'</b> no conformidades ('+R.meses.map(m=>m.split('-').reverse().join('/')).join(', ')+') · <b>'+R.nuevasNCm+'</b> filas nuevas en NCm_NCM'+(R.yaExistian?' · '+R.yaExistian+' actualizadas':'')+' · <b>'+R.puntosDescontados+'</b> punto(s) descontados en AUDIT HK.</p>'+(r.warnings.length?'<ul>'+r.warnings.map(w=>'<li>'+esc(w)+'</li>').join('')+'</ul>':'')+'<p class="muted small">Ábrelo en Excel (habilita macros si lo pide): INFORME AUDIT INTERNA y Analisis_Tendencias se recalculan solos con los datos de la app.</p>',{noSave:true})
+  }catch(e){console.error(e);toast('No se pudo generar: '+(e.message||e))}
 }
 let xlsxP=null;
 function needXLSX(){if(window.XLSX)return Promise.resolve();if(!xlsxP)xlsxP=new Promise((res,rej)=>{const sc=document.createElement('script');sc.src='xlsx.full.min.js';sc.onload=res;sc.onerror=()=>{xlsxP=null;rej(new Error('xlsx'))};document.head.appendChild(sc)});return xlsxP}
@@ -717,7 +716,7 @@ function vInforme(){
   if(!S.repMes)S.repMes=todayISO().slice(0,7);
   let h='<h2 class="noprint">Informes</h2><div class="noprint"><div class="chips"><button class="'+(S.repTab==='hoja'?'on':'')+'" data-act="repTab" data-t="hoja">Hoja de revisión (vidrios)</button><button class="'+(S.repTab==='parte'?'on':'')+'" data-act="repTab" data-t="parte">Parte de mantenimiento</button><button class="'+(S.repTab==='hk'?'on':'')+'" data-act="repTab" data-t="hk">Housekeeping</button></div>';
   h+='<div class="row">'+'<div class="grow"><input type="month" data-set="repMes" value="'+esc(S.repMes)+'"></div>'+(S.repTab==='hk'?'<label class="inl"><input type="checkbox" data-set="repAll" '+(S.repAll?'checked':'')+'> Todos los meses</label><label class="inl"><input type="checkbox" data-set="repOpen" '+(S.repOpen?'checked':'')+'> Incluir abiertas de meses anteriores</label>':'')+'</div>';
-  h+=(S.repTab==='hk'?'<div class="row" style="margin:10px 0"><button class="b pri sm" data-act="hkCopy">📋 Copiar para el Excel del holding</button><button class="b pri sm" data-act="hkHold">📊 Informe del holding (.xlsm)</button><button class="b sm" data-act="hkOpenXl">📂 Abrir Excel del holding</button><button class="b sm" data-act="hkXlsx">⬇ Excel (.xlsx)</button><button class="b sm" data-act="dlCsv">CSV</button><button class="b ghost sm" data-act="imprimir">🖨️ Imprimir</button></div><p class="muted small">Mismo orden de columnas que la vista «Exportación a excel» ('+hkExportRows().length+' filas). La copia no lleva cabecera.</p></div>':'<div class="row" style="margin:10px 0"><button class="b pri sm" data-act="imprimir">🖨️ Imprimir / PDF</button><button class="b sm" data-act="dlHtml">Descargar para imprimir</button><button class="b sm" data-act="dlCsv">Descargar CSV</button></div></div>');
+  h+=(S.repTab==='hk'?'<div class="row" style="margin:10px 0"><button class="b pri sm" data-act="hkCopy">📋 Copiar para el Excel del holding</button><button class="b pri sm" data-act="hkHold">📊 Generar Excel del holding (.xlsm)</button><button class="b sm" data-act="hkOpenXl">📂 Abrir Excel del holding</button><button class="b sm" data-act="hkXlsx">⬇ Excel (.xlsx)</button><button class="b sm" data-act="dlCsv">CSV</button><button class="b ghost sm" data-act="imprimir">🖨️ Imprimir</button></div><p class="muted small">Mismo orden de columnas que la vista «Exportación a excel» ('+hkExportRows().length+' filas). La copia no lleva cabecera.</p></div>':'<div class="row" style="margin:10px 0"><button class="b pri sm" data-act="imprimir">🖨️ Imprimir / PDF</button><button class="b sm" data-act="dlHtml">Descargar para imprimir</button><button class="b sm" data-act="dlCsv">Descargar CSV</button></div></div>');
   if(S.repTab==='hoja'&&S.rep.key!==S.repMes)return h+empty('Cargando mes…');
   return h+'<div class="rep-wrap">'+repBody()+'</div>'
 }

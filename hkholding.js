@@ -63,15 +63,13 @@ async function hkFill(buf,opts){
   for(const n of ['AUDIT HK','NCm_NCM','INFORME AUDIT INTERNA'])if(!sheetPath[n])throw new Error('Falta la hoja «'+n+'». ¿Es el Excel del holding?');
   const sst=parseSST(await rd('xl/sharedStrings.xml')||'');
   const mes=opts.mes,y=+mes.slice(0,4),mi=+mes.slice(5,7)-1;
-  const c0=7+6*mi; // columna de "Puntos" del mes
-  const COL={p:colL(c0),sub:colL(c0+1),com:colL(c0+2),men:colL(c0+3),may:colL(c0+4),om:colL(c0+5)};
+  const meses=[...new Set((opts.meses||[]).concat([mes]))].sort();
   const warnings=[];
 
   /* ---- AUDIT HK ---- */
   const hkXml=await rd(sheetPath['AUDIT HK']);const hk=new Sheet(hkXml);const cells=readCells(hkXml,sst);
   const txt=ref=>cells[ref]?cells[ref].v:'';
   let maxRow=0;Object.keys(cells).forEach(k=>{const r=+k.replace(/\D/g,'');if(r>maxRow)maxRow=r});
-  // estructura: filas de pregunta y áreas
   const rowOf={},areas=[];let sec=null,cur=null,inFD=false,fdN={};
   for(let r=8;r<=maxRow;r++){
     const b=txt('B'+r).trim(),c=txt('C'+r).trim(),d=txt('D'+r).trim();
@@ -81,62 +79,58 @@ async function hkFill(buf,opts){
     else if(inFD&&d&&cur){fdN[sec]=(fdN[sec]||0)+1;rowOf[sec+'.FD.'+String(fdN[sec]).padStart(2,'0')]=r;cur.end=r}
   }
   if(!Object.keys(rowOf).length)throw new Error('No se reconoce la hoja AUDIT HK');
-  const allRows=Object.values(rowOf);
-  // ¿ya tiene datos ese mes?
-  let had=false;
-  if(txt(colL(c0+2)+'1')||txt(colL(c0+4)+'1'))had=true;
-  for(const r of allRows){const p=txt(COL.p+r);if(p!==''&&p!=='2'&&!/^NA$/i.test(p))had=true;for(const k of ['com','men','may','om'])if(txt(COL[k]+r))had=true}
-  if(had&&!opts.overwrite)return{hadData:true};
-
-  // puntuación
-  const ncs=(opts.ncs||[]).filter(x=>String(x.fecha).slice(0,7)===mes);
-  const ded={},txts={};let sinTipo=0,sinCodigo=[];
   const ptsD={'No conformidad menor':1,'No conformidad mayor':2,'Observación':0};
-  ncs.forEach(n=>{
-    const code=normCode(n.ncm),row=rowOf[code];
-    if(!(n.tipo in ptsD)){sinTipo++;return}
-    if(!row){sinCodigo.push((n.id||'')+' ('+(n.ncm||'sin código')+')');return}
-    ded[code]=(ded[code]||0)+ptsD[n.tipo];
-    const col=n.tipo==='No conformidad mayor'?'may':n.tipo==='No conformidad menor'?'men':'om';
-    (txts[code]=txts[code]||{men:[],may:[],om:[]})[col].push(String(n.resumen||'').trim()+(n.id?' ('+n.id+')':''));
-  });
-  const secTocada={};ncs.forEach(n=>{const c=normCode(n.ncm);if(rowOf[c]&&n.tipo in ptsD)secTocada[c[0]]=true});
-  for(const code in rowOf){const r=rowOf[code];
-    if(!secTocada[code[0]]&&/^NA$/i.test(txt(COL.p+r).trim())){/* no auditada este mes: se respeta NA */}else hk.setCell(COL.p+r,{v:Math.max(0,2-(ded[code]||0))});
-    for(const k of ['com','men','may','om']){const t=txts[code]&&txts[code][k]?txts[code][k].join(' · '):'';hk.setCell(COL[k]+r,t?{v:t}:null)}}
-  // subtotales de área como fórmula
-  areas.forEach(a=>hk.setCell(COL.sub+a.start,{f:'SUM('+COL.p+a.start+':'+COL.p+a.end+')'}));
+  let sinTipo=0;const sinCodigo=[];let puntos=0,totNC=0;
+  const allNcs=(opts.ncs||[]).filter(x=>meses.includes(String(x.fecha).slice(0,7)));
+  for(const m of meses){
+    const c0=7+6*(+m.slice(5,7)-1);
+    const COL={p:colL(c0),sub:colL(c0+1),com:colL(c0+2),men:colL(c0+3),may:colL(c0+4),om:colL(c0+5)};
+    const ncs=allNcs.filter(x=>String(x.fecha).slice(0,7)===m);totNC+=ncs.length;
+    const ded={},txts={};
+    ncs.forEach(n=>{
+      const code=normCode(n.ncm),row=rowOf[code];
+      if(!(n.tipo in ptsD)){sinTipo++;return}
+      if(!row){sinCodigo.push((n.id||'')+' ('+(n.ncm||'sin código')+')');return}
+      ded[code]=(ded[code]||0)+ptsD[n.tipo];
+      const col=n.tipo==='No conformidad mayor'?'may':n.tipo==='No conformidad menor'?'men':'om';
+      (txts[code]=txts[code]||{men:[],may:[],om:[]})[col].push(String(n.resumen||'').trim()+(n.id?' ('+n.id+')':''));
+    });
+    puntos+=Object.values(ded).reduce((a,b)=>a+Math.min(2,b),0);
+    const secTocada={};ncs.forEach(n=>{const c=normCode(n.ncm);if(rowOf[c]&&n.tipo in ptsD)secTocada[c[0]]=true});
+    for(const code in rowOf){const r=rowOf[code];
+      if(!secTocada[code[0]]&&/^NA$/i.test(txt(COL.p+r).trim())){/* no auditada este mes: se respeta NA */}else hk.setCell(COL.p+r,{v:Math.max(0,2-(ded[code]||0))});
+      for(const k of ['com','men','may','om']){const t=txts[code]&&txts[code][k]?txts[code][k].join(' · '):'';hk.setCell(COL[k]+r,t?{v:t}:null)}}
+    areas.forEach(a=>hk.setCell(COL.sub+a.start,{f:'SUM('+COL.p+a.start+':'+COL.p+a.end+')'}));
+    const names=[...new Set(ncs.map(n=>n.creadoPor).filter(Boolean))].join(', ');
+    const lastF=ncs.map(n=>String(n.fecha).slice(0,10)).sort().pop()||(opts.hoy||new Date().toISOString().slice(0,10));
+    hk.setCell(colL(c0+2)+'1',{v:serial(lastF)});
+    hk.setCell(colL(c0+4)+'1',names?{v:names}:null);
+  }
   // corrige subtotales de otros meses que se incluyan a sí mismos (referencia circular, p. ej. mayo en Envasado)
   let corr=0;
   for(let k=0;k<12;k++){const p=colL(7+6*k),sb=colL(8+6*k);
-    areas.forEach(a=>{const ref=sb+a.start;if(!cells[ref]||!cells[ref].f||k===mi)return;
+    areas.forEach(a=>{const ref=sb+a.start;if(!cells[ref]||!cells[ref].f)return;
       const m=new RegExp('<c r="'+ref+'"[^>]*><f[^>]*>([^<]*)</f>').exec(hk.xml);const exp='SUM('+p+a.start+':'+p+a.end+')';
       if(m&&m[1]!==exp&&/^SUM\(/.test(m[1])&&m[1].indexOf(sb)>=0){hk.setCell(ref,{f:exp});corr++}})}
-  // cabecera del mes
-  const names=[...new Set(ncs.map(n=>n.creadoPor).filter(Boolean))].join(', ');
-  const lastF=ncs.map(n=>String(n.fecha).slice(0,10)).sort().pop()||(opts.hoy||new Date().toISOString().slice(0,10));
-  hk.setCell(colL(c0+2)+'1',{v:serial(lastF)});
-  hk.setCell(colL(c0+4)+'1',names?{v:names}:null);
   zip.file(sheetPath['AUDIT HK'],hk.xml);
 
-  /* ---- NCm_NCM: filas nuevas ---- */
+  /* ---- NCm_NCM: filas nuevas / actualizadas ---- */
   const nx=await rd(sheetPath['NCm_NCM']);const nm=new Sheet(nx);const nc=readCells(nx,sst);
-  let last=8,maxA=0;const have=new Set();
-  Object.keys(nc).forEach(k=>{const m=/^C(\d+)$/.exec(k);if(m&&+m[1]>=9){if(+m[1]>last)last=+m[1];const r=m[1];
-    have.add(serial0(nc['B'+r])+'|'+normCode(nc[k].v)+'|'+norm(nc['F'+r]&&nc['F'+r].v))}});
-  Object.keys(nc).forEach(k=>{const m=/^A(\d+)$/.exec(k);if(m&&+m[1]>=9){const n=+nc[k].v;if(n>maxA)maxA=n}});
   function norm(s){return String(s||'').toLowerCase().replace(/\s+/g,' ').trim().slice(0,40)}
   function serial0(c){return c&&c.v!=null?Math.round(+c.v):''}
+  let last=8,maxA=0;const have={};
+  Object.keys(nc).forEach(k=>{const m=/^C(\d+)$/.exec(k);if(m&&+m[1]>=9){if(+m[1]>last)last=+m[1];const r=+m[1];
+    have[serial0(nc['B'+r])+'|'+normCode(nc[k].v)+'|'+norm(nc['F'+r]&&nc['F'+r].v)]=r}});
+  Object.keys(nc).forEach(k=>{const m=/^A(\d+)$/.exec(k);if(m&&+m[1]>=9){const n=+nc[k].v;if(n>maxA)maxA=n}});
   const styleRow={};const rr0=nm.rowRange(last);if(rr0){let m;const re=/<c r="([A-Z]+)\d+"([^>]*?)(\/>|>)/g;while((m=re.exec(rr0.s)))styleRow[m[1]]=(m[2].match(/\bs="(\d+)"/)||[])[1]}
   let nxt=last,added=0,dup=0;
-  const sorted=ncs.slice().sort((a,b)=>String(a.fecha).localeCompare(String(b.fecha)));
-  sorted.forEach(n=>{
+  allNcs.slice().sort((a,b)=>String(a.fecha).localeCompare(String(b.fecha))).forEach(n=>{
     const key=serial(n.fecha)+'|'+normCode(n.ncm)+'|'+norm(n.resumen);
-    if(have.has(key)){dup++;return}
-    nxt++;added++;maxA++;const r=nxt;
+    let r=have[key],nuevo=!r;
+    if(nuevo){nxt++;added++;maxA++;r=nxt}else dup++;
     const put=(c,spec)=>nm.setCell(c+r,spec,styleRow[c]);
-    put('A',{v:maxA});put('B',{v:serial(n.fecha)});put('C',{v:String(n.ncm||'')});put('D',{v:n.seccionDeteccion||''});put('E',{v:n.dpto||''});
-    put('F',{v:n.resumen||''});put('J',{v:n.causas||''});put('M',{v:n.accion||''});put('Q',{v:n.respNombre||''});
+    if(nuevo){put('A',{v:maxA});put('B',{v:serial(n.fecha)});put('C',{v:String(n.ncm||'')});put('D',{v:n.seccionDeteccion||''});put('F',{v:n.resumen||''});put('J',{v:n.causas||''});put('M',{v:n.accion||''})}
+    put('E',{v:n.dpto||''});put('Q',{v:n.respNombre||''});
     put('R',n.fechaPrevista?{v:serial(n.fechaPrevista)}:null);put('S',n.fechaReal?{v:serial(n.fechaReal)}:null);put('T',{v:n.estado==='Cerrado'?'C':'A'});
   });
   zip.file(sheetPath['NCm_NCM'],nm.xml);
@@ -160,7 +154,7 @@ async function hkFill(buf,opts){
   if(sinTipo)warnings.push(sinTipo+' no conformidad(es) del mes sin tipo (antiguas): no puntúan en AUDIT HK.');
   if(sinCodigo.length)warnings.push('Sin código reconocido (no puntúan): '+sinCodigo.join(', '));
   const data=await zip.generateAsync({type:'uint8array',compression:'DEFLATE'});
-  return{data:data,warnings:warnings,resumen:{mes:mes,ncs:ncs.length,nuevasNCm:added,yaExistian:dup,puntosDescontados:Object.values(ded).reduce((a,b)=>a+Math.min(2,b),0),hadData:had}}
+  return{data:data,warnings:warnings,resumen:{mes:mes,meses:meses,ncs:totNC,nuevasNCm:added,yaExistian:dup,puntosDescontados:puntos}}
 }
 root.hkFill=hkFill;
 if(typeof module!=='undefined')module.exports={hkFill};
