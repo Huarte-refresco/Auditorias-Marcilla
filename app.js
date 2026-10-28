@@ -784,11 +784,11 @@ function openMail(m){
   openSheet('Aviso por correo','<label>Para</label><div class="mailbox">'+esc(to.join('; '))+'</div>'+(cc.length?'<label>CC (en copia)</label><div class="mailbox">'+esc(cc.join('; '))+'</div>':'')+'<label>Asunto</label><div class="mailbox">'+esc(m.subject)+'</div><label>Mensaje</label><div class="mailbox">'+esc(m.body)+'</div><p class="row" style="margin-top:12px">'+(canSend?'<button class="b pri" id="mailsend">✉ Enviar ahora</button>':'')+'<a class="b'+(canSend?'':' pri')+'" style="text-decoration:none;display:inline-block" id="mailgo" title="Copia el mensaje con botón y abre tu correo" href="'+esc(url)+'" target="_blank" rel="noopener">Abrir en mi correo</a><button class="b" id="mailcopy">Copiar mensaje</button><button class="b" id="mailhtml">Copiar con botón (Outlook)</button></p><p class="muted small">'+(canSend?'«Enviar ahora» lo manda la app a todo el departamento (las respuestas te llegarán a ti).':'Se abrirá tu correo con el aviso ya redactado.')+'</p>',{noSave:true,wire:()=>{
     const sb=$('#mailsend');
     if(sb)sb.onclick=async()=>{sb.disabled=true;try{await sendServerMail(m);closeSheet();toast('✉ Aviso enviado')}catch(e){sb.disabled=false;toast('No se pudo enviar: usa «Abrir en mi correo»')}};
-    $('#mailgo').onclick=async ev=>{if(m.onSent)m.onSent();
+    $('#mailgo').onclick=async ev=>{ev.preventDefault();if(m.onSent)m.onSent();
+      const base='mailto:'+to.join(',')+'?'+(cc.length?'cc='+cc.map(encodeURIComponent).join(',')+'&':'')+'subject='+encodeURIComponent(m.subject);
       try{const h=mailHtml(m.body);await navigator.clipboard.write([new ClipboardItem({'text/html':new Blob([h],{type:'text/html'}),'text/plain':new Blob([m.body],{type:'text/plain'})})]);
-        ev.preventDefault();toast('Mensaje con botón copiado: en el correo, pulsa Ctrl+V en el cuerpo');
-        const u2='mailto:'+to.join(',')+'?'+(cc.length?'cc='+cc.map(encodeURIComponent).join(',')+'&':'')+'subject='+encodeURIComponent(m.subject);
-        setTimeout(()=>{location.href=u2},400)}catch(e){/* sin portapapeles: se abre el correo con el texto normal */}};
+        toast('Mensaje con botón copiado: en el correo, pulsa Ctrl+V en el cuerpo');setTimeout(()=>{location.href=base},400)}
+      catch(e){location.href=base+'&body='+encodeURIComponent(m.body)}};
     $('#mailcopy').onclick=async()=>{try{await navigator.clipboard.writeText(m.body);toast('Mensaje copiado')}catch(e){toast('No se pudo copiar')}};
     $('#mailhtml').onclick=async()=>{try{const h=mailHtml(m.body);await navigator.clipboard.write([new ClipboardItem({'text/html':new Blob([h],{type:'text/html'}),'text/plain':new Blob([m.body],{type:'text/plain'})})]);toast('Copiado: pégalo en el cuerpo del correo (Ctrl+V)')}catch(e){try{await navigator.clipboard.writeText(m.body);toast('Copiado como texto')}catch(_){toast('No se pudo copiar')}}};
   }})
