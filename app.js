@@ -799,7 +799,7 @@ const miNombre=()=>actorName();
 function mailNuevoParte(x){
   const d=destParte(x),hk=origenOf(x)==='Housekeeping';
   const cuerpo=hk
-   ?'Calidad ha abierto una no conformidad de Housekeeping que debe resolver '+deptOf(x)+':\n\nNº: '+x.id+'\nNCm/NCM: '+(x.ncm||x.elemento)+'\nSección de detección: '+x.zona+'\nResumen: '+x.resumen+'\nAnálisis de causas: '+x.causas+'\nAcciones correctivas/preventivas: '+x.accion+'\nFecha prevista: '+fmtD(x.fechaPrevista)
+   ?'Calidad ha abierto una no conformidad de Housekeeping que debe resolver '+deptOf(x)+':\n\nNº: '+x.id+'\nNCm/NCM: '+(x.ncm||x.elemento)+(x.tipo?'\nTipo: '+x.tipo:'')+'\nSección de detección: '+x.zona+'\nResumen: '+x.resumen+'\nAnálisis de causas: '+x.causas+'\nAcciones correctivas/preventivas: '+x.accion+'\nFecha prevista: '+fmtD(x.fechaPrevista)
    :'Calidad ha detectado una no conformidad en la revisión de vidrios y acrílicos que debe resolver '+deptOf(x)+':\n\nParte: '+x.id+'\nZona: '+x.zona+'\nElemento: '+x.elemento+'\nAcción a realizar: '+x.accion+'\nFecha prevista: '+fmtD(x.fechaPrevista);
   return{srv:{tipo:'nueva',id:x.id},to:d.para,cc:d.cc,subject:'['+origenOf(x)+'] Nueva incidencia '+x.id+' · '+x.zona,body:'Hola,\n\n'+cuerpo+'\n\nPor favor, entra en la app de Auditorías de planta, realiza la acción y márcala como "Hecho" con una foto.'+linkTxt(x.id)+'\n\nGracias,\n'+miNombre(),
     onSent:()=>S.db.doc('partes/'+x.id).update({avisoEnviado:true}).catch(()=>{})}
