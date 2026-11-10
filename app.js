@@ -498,8 +498,9 @@ function ptRow(pt,st,ca){
   const r=st.rev,nf=(pt.fotos||[]).length,th=nf?'ref/'+thumbName(pt.fotos[0]):'';
   const ph=th?'<img data-ph="'+esc(th)+'" data-act="imgs" data-pid="'+esc(pt.id)+'" alt="">'+(nf>1?'<div class="n">'+nf+' fotos</div>':''):'<div class="nofoto">Sin foto</div>';
   let cls='s-pend',res;
-  if(!r){res=ca?'<div class="btns"><button class="b ok" data-act="ok" data-pid="'+esc(pt.id)+'">OK</button><button class="b bad" data-act="nook" data-pid="'+esc(pt.id)+'">NO OK</button></div>'+(esSuper()?'<button class="lnk small" data-act="posteriori" data-pid="'+esc(pt.id)+'">Registrar a posteriori</button>':''):'<span class="chip pend">Pendiente</span>'}
+  if(!r){res=ca?'<div class="btns"><button class="b ok" data-act="ok" data-pid="'+esc(pt.id)+'">OK</button><button class="b bad" data-act="nook" data-pid="'+esc(pt.id)+'">NO OK</button><button class="b" data-act="na" data-pid="'+esc(pt.id)+'" title="Este punto no aplica: sin foto ni parte">N/A</button></div>'+(esSuper()?'<button class="lnk small" data-act="posteriori" data-pid="'+esc(pt.id)+'">Registrar a posteriori</button>':''):'<span class="chip pend">Pendiente</span>'}
   else if(r.resultado==='OK'){cls='s-ok';res='<span class="chip ok">✔ OK</span> <span class="muted small">'+fmtD(r.fecha)+' · '+esc(r.por)+'</span>'+(r.aPosteriori?' <span class="chip pend">registrada a posteriori</span>':'')+(ca?' <button class="lnk small" data-act="undo" data-rid="'+esc(st.id)+'">Deshacer</button>':'')}
+  else if(r.resultado==='N/A'){cls='s-ok';res='<span class="chip">N/A · No aplica</span> <span class="muted small">'+fmtD(r.fecha)+' · '+esc(r.por)+(r.obs?' · '+esc(r.obs):'')+'</span>'+(ca?' <button class="lnk small" data-act="undo" data-rid="'+esc(st.id)+'">Deshacer</button>':'')}
   else{cls='s-bad';res='<span class="chip bad">✖ NO OK</span> <span class="muted small">'+fmtD(r.fecha)+' · '+esc(r.por)+' · ACP:</span> <button class="lnk small" data-act="verparte" data-id="'+esc(r.parteId||'')+'">'+esc(r.parteId||'—')+'</button>'+(ca?' <button class="lnk small" data-act="undo" data-rid="'+esc(st.id)+'">Deshacer</button>':'')}
   return '<div class="pt '+cls+'"><div class="ph">'+ph+'</div><div class="pb"><div class="rev">'+esc(pt.rev)+'</div><div class="meta">'+(pt.mat?'<span>Material: '+esc(pt.mat)+'</span>':'')+(pt.cant?'<span>Cantidad: '+esc(pt.cant)+'</span>':'')+'<span class="chip">'+esc(pt.per)+' · '+fmtS(st.per.inicio)+'–'+fmtS(st.per.limite)+'</span></div>'+res+'</div></div>'
 }
@@ -515,12 +516,12 @@ function vHK(){
 }
 function openHK(){
   const secc=secciones(),prev=iso(addDays(new Date(),Number(S.config.plazoDias)||14));
-  openSheet('Housekeeping · nueva no conformidad','<label>Fecha apertura</label><input type="date" id="h_fecha" value="'+todayISO()+'"><label>Sección detección *</label><select id="h_det"><option value="">—</option>'+secc.map(s=>'<option>'+esc(s)+'</option>').join('')+'</select><label>NCm/NCM * (punto de la auditoría)</label><select id="h_ncm" disabled><option value="">Elige primero la sección</option></select><input id="h_ncmo" placeholder="Escribe el código o punto" style="display:none"><label>Tipo de no conformidad *</label><select id="h_tipo"><option value="">—</option><option>Observación</option><option>No conformidad menor</option><option>No conformidad mayor</option></select><label>Sección resolución (departamento que recibe el aviso) *</label><select id="h_dpto">'+optsDeptos('')+'</select><label>Responsable concreto (opcional)</label><select id="h_resp">'+'<option value="">—</option>'+S.personas.map(p=>'<option value="'+esc(p.id)+'">'+esc(p.nombre)+'</option>').join('')+'</select><label>Resumen no conformidades *</label><textarea id="h_resumen" rows="2"></textarea><label>Análisis de causas *</label><textarea id="h_causas" rows="2"></textarea><label>Acciones correctivas/preventivas a implantar *</label><textarea id="h_acc" rows="2"></textarea><label>Fecha prevista *</label><input type="date" id="h_prev" value="'+prev+'">'+photoField('f_foto','Foto de calidad',true),{label:'Crear no conformidad',cls:'bad',wire:()=>{wirePhoto('f_foto');const d=$('#h_det'),n=$('#h_ncm'),o=$('#h_ncmo');
+  openSheet('Housekeeping · nueva no conformidad','<label>Fecha apertura</label><input type="date" id="h_fecha" value="'+todayISO()+'"><label>Sección detección *</label><select id="h_det"><option value="">—</option>'+secc.map(s=>'<option>'+esc(s)+'</option>').join('')+'</select><label>NCm/NCM * (punto de la auditoría)</label><select id="h_ncm" disabled><option value="">Elige primero la sección</option></select><input id="h_ncmo" placeholder="Escribe el código o punto" style="display:none"><label>Tipo de no conformidad *</label><select id="h_tipo"><option value="">—</option><option>Observación</option><option>No conformidad menor</option><option>No conformidad mayor</option></select><label>Sección resolución (departamento que recibe el aviso) *</label><select id="h_dpto">'+optsDeptos('')+'</select><label>Responsable concreto (opcional)</label><select id="h_resp">'+'<option value="">—</option>'+S.personas.map(p=>'<option value="'+esc(p.id)+'">'+esc(p.nombre)+'</option>').join('')+'</select><label>Resumen no conformidades *</label><textarea id="h_resumen" rows="2"></textarea><label>Análisis de causas *</label><textarea id="h_causas" rows="2"></textarea><label>Acciones correctivas/preventivas a implantar *</label><textarea id="h_acc" rows="2"></textarea><label>Fecha prevista *</label><input type="date" id="h_prev" value="'+prev+'">'+photoField('f_foto','Foto de calidad',fotoReq('v',pt.id)),{label:'Crear no conformidad',cls:'bad',wire:()=>{wirePhoto('f_foto');const d=$('#h_det'),n=$('#h_ncm'),o=$('#h_ncmo');
       const fill=()=>{const L=Object.keys(HK_SEC).find(k=>HK_SEC[k]===d.value);n.disabled=!d.value;o.style.display='none';o.value='';
         n.innerHTML=!d.value?'<option value="">Elige primero la sección</option>':'<option value="">—</option>'+(L?Object.keys(HK_CAT).filter(k=>k[0]===L).map(k=>'<option value="'+k+'">'+k+' · '+esc((HK_TIPO[k.split('.')[1]]||'')+' · '+HK_CAT[k])+'</option>').join(''):'')+'<option value="__o">Otro (escribir)…</option>'};
       d.addEventListener('change',fill);n.addEventListener('change',()=>{o.style.display=n.value==='__o'?'':'none'})},onSave:async()=>{
     const v={fecha:val('h_fecha'),ncm:(val('h_ncm')==='__o'?val('h_ncmo'):val('h_ncm')).trim(),tipo:val('h_tipo'),det:val('h_det'),dpto:val('h_dpto'),resp:val('h_resp'),resumen:val('h_resumen').trim(),causas:val('h_causas').trim(),acc:val('h_acc').trim(),prev:val('h_prev')},ph=photos.f_foto,p=me();
-    if(!v.fecha||!v.ncm||!v.tipo||!v.det||!v.dpto||!v.resumen||!v.causas||!v.acc||!v.prev||!ph){toast('Rellena todos los campos obligatorios y añade la foto');return false}
+    if(!v.fecha||!v.ncm||!v.tipo||!v.det||!v.dpto||!v.resumen||!v.causas||!v.acc||!v.prev||(!ph&&fotoReq('hkNC'))){toast('Rellena todos los campos obligatorios y añade la foto');return false}
     const fid=uid(),id='HK'+v.fecha.slice(2).replace(/-/g,'')+'-'+Math.random().toString(36).slice(2,5).toUpperCase();
     const fids=await savePhotosInc(photos.f_foto_list,ph);
     const parte={origen:'Housekeeping',fecha:v.fecha,linea:'HK',zona:v.det,elemento:v.ncm,ncm:v.ncm,tipo:v.tipo,seccionDeteccion:v.det,dpto:v.dpto,resp:v.resp||'',resumen:v.resumen,causas:v.causas,accion:v.acc,creadoPor:actorName(),fotoIni:fids,fechaPrevista:v.prev,estado:'Abierto',avisoEnviado:false};
@@ -605,10 +606,10 @@ function hojaHTML(linea,mes,revs){
     const th=(pt.fotos&&pt.fotos[0])?'ref/'+thumbName(pt.fotos[0]):'';
     const sl=slotsDelMes(pt.per||'Mensual',mes),n=sl.length;
     sl.forEach((sp,i)=>{
-      const r=byK[pt.id+'_'+sp.inicio],ok=r&&r.resultado==='OK',no=r&&r.resultado==='NO OK';
+      const r=byK[pt.id+'_'+sp.inicio],ok=r&&r.resultado==='OK',no=r&&r.resultado==='NO OK',na=r&&r.resultado==='N/A';
       const cab=i===0?'<td rowspan="'+n+'">'+(th?'<img data-ph="'+esc(th)+'" alt="">':'')+'</td><td rowspan="'+n+'">'+esc(pt.rev)+'</td><td rowspan="'+n+'">'+esc(pt.mat)+'</td><td rowspan="'+n+'">'+esc(pt.cant)+'</td><td class="c" rowspan="'+n+'">'+esc(String(pt.per).toUpperCase())+'</td>':'';
       const per=pt.per==='Mensual'?'':'<br><span style="color:#777;font-size:9.5px">('+(pt.per==='Semanal'?'sem. ':'')+fmtS(sp.inicio)+'–'+fmtS(sp.limite)+')</span>';
-      h+='<tr>'+cab+'<td class="c">'+(r?fmtS(String(r.fecha).slice(0,10)):'')+(r&&r.aPosteriori?'<br><span style="color:#B8400C;font-size:9.5px">(a posteriori)</span>':'')+per+'</td><td class="c okc">'+(ok?'✔':'')+'</td><td class="c nokc">'+(no?'✖':'')+'</td><td class="c">'+(no?esc(r.parteId||''):'')+'</td><td class="c">'+(r?esc(first(r.por)):'')+'</td></tr>'
+      h+='<tr>'+cab+'<td class="c">'+(r?fmtS(String(r.fecha).slice(0,10)):'')+(r&&r.aPosteriori?'<br><span style="color:#B8400C;font-size:9.5px">(a posteriori)</span>':'')+per+'</td><td class="c okc">'+(ok?'✔':(na?'N/A':''))+'</td><td class="c nokc">'+(no?'✖':'')+'</td><td class="c">'+(no?esc(r.parteId||''):'')+'</td><td class="c">'+(r?esc(first(r.por)):'')+'</td></tr>'
     })
   });
   return h+'</tbody></table>'
@@ -774,7 +775,7 @@ function wirePhoto(id,ref){
   const draw=()=>{photos[id]=L[0];box.innerHTML=L.map((r,i)=>'<span style="position:relative;display:inline-block;margin:4px 6px 4px 0"><img src="'+r.thumb+'" alt="" style="height:70px;border-radius:6px;display:block"><b data-rm="'+i+'" style="position:absolute;top:-6px;right:-6px;background:#c0392b;color:#fff;border-radius:50%;width:20px;height:20px;line-height:20px;text-align:center;cursor:pointer;font-size:13px">×</b></span>').join('')+(L.length?'<div class="muted small">'+L.length+' foto'+(L.length>1?'s':'')+'</div>':'');box.querySelectorAll('[data-rm]').forEach(b=>b.onclick=()=>{L.splice(Number(b.dataset.rm),1);draw()})};
   inp.onchange=async()=>{const fs=Array.from(inp.files||[]);if(!fs.length)return;box.textContent='Procesando…';let fail=0;for(const f of fs){if(L.length>=MAX){toast('Máximo '+MAX+' fotos');break}try{L.push(await processPhoto(f))}catch(e){fail++}}inp.value='';draw();if(fail)toast('Alguna imagen no se pudo leer')}
 }
-async function savePhotosInc(list,ph){const a=(list&&list.length)?list:[ph];const ids=[];for(const p of a){const i=uid();await savePhotoPair('inc',i,p);ids.push(i)}return ids.join(',')}
+async function savePhotosInc(list,ph){const a=(list&&list.length)?list:(ph?[ph]:[]);const ids=[];for(const p of a){const i=uid();await savePhotoPair('inc',i,p);ids.push(i)}return ids.join(',')}
 function fotoFigs(v,cap){const a=String(v||'').split(',').filter(Boolean);return a.map((f,i)=>'<figure><img data-ph="inc/'+esc(f)+'_t.jpg" data-act="foto" data-f="inc/'+esc(f)+'.jpg" alt=""><figcaption>'+cap+(a.length>1?' '+(i+1):'')+'</figcaption></figure>').join('')}
 
 /* ---- avisos por correo (varios destinatarios y copia por departamento) ---- */
@@ -818,6 +819,13 @@ function mailDigest(nombre){
 }
 
 /* ---- acciones de negocio ---- */
+const fotoReq=(k,pid)=>k==='hkNC'?S.config.hkFotoNc!==false:k==='hkHecho'?S.config.hkFotoHecho!==false:!(S.config.sinFoto||[]).includes(pid);
+function openNA(pt,st){
+  openSheet('No aplica · '+esc(pt.equipo),'<div class="kv">'+esc(pt.rev)+'</div><label>Motivo *</label><textarea id="f_na" rows="3" placeholder="Ej.: en esta carpa no hay ordenador"></textarea><p class="muted small">Queda registrado como «N/A», sin foto y sin parte. Si este punto no va a aplicar nunca, un administrador puede desactivarlo en Ajustes.</p>',{label:'Marcar como No aplica',onSave:async()=>{
+    const m=val('f_na').trim();if(!m){toast('Indica el motivo');return false}
+    const p=me();await S.db.doc('revisiones/'+st.id).set({pid:pt.id,linea:pt.linea,equipo:pt.equipo,per:pt.per,inicio:st.per.inicio,limite:st.per.limite,resultado:'N/A',fecha:nowISO(),por:actorName(),porId:p?p.id:'',obs:m});
+    return{after:()=>toast('Marcado como No aplica')}}})
+}
 async function doOK(pt,st){
   const p=me();
   await S.db.doc('revisiones/'+st.id).set({pid:pt.id,linea:pt.linea,equipo:pt.equipo,per:pt.per,inicio:st.per.inicio,limite:st.per.limite,resultado:'OK',fecha:nowISO(),por:actorName(),porId:p.id})
@@ -834,9 +842,9 @@ function openPosteriori(pt,st){
 }
 function openNoOk(pt,st){
   const prev=iso(addDays(new Date(),Number(S.config.plazoDias)||14));
-  openSheet('NO OK · crear parte (ACP)','<div class="kv"><b>'+esc(pt.linea+' · '+pt.equipo)+'</b><br>'+esc(pt.rev)+'</div><label>Elemento *</label><input id="f_elem" value="'+esc(pt.equipo)+'"><label>Acción a realizar *</label><textarea id="f_accion" rows="3" placeholder="Ej.: sustituir metacrilato roto de la puerta"></textarea><label>Departamento que lo resuelve</label><select id="f_dpto"><option>'+esc(VID_DPTO())+'</option></select><p class="muted small">Los vidrios los repara siempre Mantenimiento.</p><label>Responsable concreto (opcional)</label><select id="f_resp"><option value="">—</option>'+S.personas.map(p=>'<option value="'+esc(p.id)+'">'+esc(p.nombre)+'</option>').join('')+'</select><label>Fecha prevista *</label><input type="date" id="f_prev" value="'+prev+'">'+photoField('f_foto','Foto de la no conformidad',true),{label:'Crear parte',cls:'bad',wire:()=>wirePhoto('f_foto'),onSave:async()=>{
+  openSheet('NO OK · crear parte (ACP)','<div class="kv"><b>'+esc(pt.linea+' · '+pt.equipo)+'</b><br>'+esc(pt.rev)+'</div><label>Elemento *</label><input id="f_elem" value="'+esc(pt.equipo)+'"><label>Acción a realizar *</label><textarea id="f_accion" rows="3" placeholder="Ej.: sustituir metacrilato roto de la puerta"></textarea><label>Departamento que lo resuelve</label><select id="f_dpto"><option>'+esc(VID_DPTO())+'</option></select><p class="muted small">Los vidrios los repara siempre Mantenimiento.</p><label>Responsable concreto (opcional)</label><select id="f_resp"><option value="">—</option>'+S.personas.map(p=>'<option value="'+esc(p.id)+'">'+esc(p.nombre)+'</option>').join('')+'</select><label>Fecha prevista *</label><input type="date" id="f_prev" value="'+prev+'">'+photoField('f_foto','Foto de la no conformidad',fotoReq('hkNC')),{label:'Crear parte',cls:'bad',wire:()=>wirePhoto('f_foto'),onSave:async()=>{
     const accion=val('f_accion').trim(),elem=val('f_elem').trim(),dpto=val('f_dpto'),resp=val('f_resp'),pv=val('f_prev'),ph=photos.f_foto,p=me();
-    if(!accion||!elem||!dpto||!pv||!ph){toast('Rellena todos los campos y añade la foto');return false}
+    if(!accion||!elem||!dpto||!pv||(!ph&&fotoReq('v',pt.id))){toast('Rellena todos los campos y añade la foto');return false}
     const fid=uid(),id='V'+todayISO().slice(2).replace(/-/g,'')+'-'+Math.random().toString(36).slice(2,5).toUpperCase();
     const fids=await savePhotosInc(photos.f_foto_list,ph);
     const parte={origen:'Vidrios',fecha:todayISO(),linea:pt.linea,zona:pt.linea+' · '+pt.equipo,elemento:elem,accion:accion,pid:pt.id,rid:st.id,dpto:dpto,resp:resp||'',creadoPor:actorName(),fotoIni:fids,fechaPrevista:pv,estado:'Abierto',avisoEnviado:false};
@@ -848,17 +856,17 @@ function openNoOk(pt,st){
 function openHecho(x){
   const p=me(),hk=origenOf(x)==='Housekeeping';
   const body=hk
-   ?'<div class="kv"><b>'+esc(x.zona+' — NCm/NCM '+(x.ncm||x.elemento))+'</b><br>'+esc(x.accion)+'</div><label>Acción realizada</label><textarea id="f_real" rows="2"></textarea><label>Comentarios</label><input id="f_com">'+photoField('f_foto','Foto de evidencia',true)
-   :'<div class="kv"><b>'+esc(x.zona+' — '+x.elemento)+'</b><br>'+esc(x.accion)+'</div><label>Acción realizada *</label><textarea id="f_real" rows="3"></textarea><label>Operario *</label><input id="f_oper" value="'+esc(actorName())+'"><label>Limpieza de zona *</label><select id="f_limp"><option value="">—</option><option value="1">Sí</option><option value="0">No</option></select><label>Ausencia de materiales / herramientas *</label><select id="f_mat"><option value="">—</option><option value="1">Sí, no queda nada</option><option value="0">No</option></select><label>Comentarios</label><input id="f_com">'+photoField('f_foto','Foto del trabajo terminado',true);
+   ?'<div class="kv"><b>'+esc(x.zona+' — NCm/NCM '+(x.ncm||x.elemento))+'</b><br>'+esc(x.accion)+'</div><label>Acción realizada</label><textarea id="f_real" rows="2"></textarea><label>Comentarios</label><input id="f_com">'+photoField('f_foto','Foto de evidencia',fotoReq('hkHecho'))
+   :'<div class="kv"><b>'+esc(x.zona+' — '+x.elemento)+'</b><br>'+esc(x.accion)+'</div><label>Acción realizada *</label><textarea id="f_real" rows="3"></textarea><label>Operario *</label><input id="f_oper" value="'+esc(actorName())+'"><label>Limpieza de zona *</label><select id="f_limp"><option value="">—</option><option value="1">Sí</option><option value="0">No</option></select><label>Ausencia de materiales / herramientas *</label><select id="f_mat"><option value="">—</option><option value="1">Sí, no queda nada</option><option value="0">No</option></select><label>Comentarios</label><input id="f_com">'+photoField('f_foto','Foto del trabajo terminado',fotoReq('v',x.pid));
   openSheet('Incidencia '+x.id+' · Hecho',body,{label:'Marcar como hecho',wire:()=>wirePhoto('f_foto'),onSave:async()=>{
     const real=val('f_real').trim(),ph=photos.f_foto;
     let upd;
     if(hk){
-      if(!ph){toast('Añade la foto de evidencia');return false}
+      if(!ph&&fotoReq('hkHecho')){toast('Añade la foto de evidencia');return false}
       upd={accionRealizada:real,operario:actorName(),comentarios:val('f_com').trim()};
     }else{
       const op=val('f_oper').trim(),l=val('f_limp'),m=val('f_mat');
-      if(!real||!op||!l||!m||!ph){toast('Rellena todos los campos y añade la foto');return false}
+      if(!real||!op||!l||!m||(!ph&&fotoReq('v',x.pid))){toast('Rellena todos los campos y añade la foto');return false}
       upd={accionRealizada:real,operario:op,limpiezaZona:l==='1',sinMateriales:m==='1',comentarios:val('f_com').trim()};
     }
     const cierraYa=hk&&!S.config.validarHK;
@@ -935,18 +943,19 @@ async function quitarPlanos(l){
 }
 function openConfig(){
   const c=S.config;
-  openSheet('Parámetros','<label>Departamento por defecto de un NO OK (vidrios)</label><select id="f_dd">'+optsDeptos(dptoDefault())+'</select><label>Plazo por defecto (días)</label><input id="f_pl" type="number" min="1" value="'+c.plazoDias+'"><label>Texto de edición en la hoja</label><input id="f_ed" value="'+esc(c.edicion)+'"><label>Control vigente desde</label><input id="f_ds" type="date" value="'+esc(c.desde)+'"><p class="muted small">Las revisiones anteriores a esta fecha no se marcan como sin hacer.</p><label>Secciones de detección de Housekeeping (una por línea)</label><textarea id="f_sec" rows="5">'+esc(secciones().join('\n'))+'</textarea><label>Enlace al Excel de Housekeeping del holding (SharePoint/OneDrive)</label><input id="f_xl" placeholder="https://…" value="'+esc(c.urlExcelHK||'')+'"><label class="inl"><input type="checkbox" id="f_vhk" '+(c.validarHK?'checked':'')+'> Housekeeping requiere Apto de calidad (si no, se cierra al pulsar Hecho)</label>',{onSave:async()=>{
+  openSheet('Parámetros','<label>Departamento por defecto de un NO OK (vidrios)</label><select id="f_dd">'+optsDeptos(dptoDefault())+'</select><label>Plazo por defecto (días)</label><input id="f_pl" type="number" min="1" value="'+c.plazoDias+'"><label>Texto de edición en la hoja</label><input id="f_ed" value="'+esc(c.edicion)+'"><label>Control vigente desde</label><input id="f_ds" type="date" value="'+esc(c.desde)+'"><p class="muted small">Las revisiones anteriores a esta fecha no se marcan como sin hacer.</p><label>Secciones de detección de Housekeeping (una por línea)</label><textarea id="f_sec" rows="5">'+esc(secciones().join('\n'))+'</textarea><label>Enlace al Excel de Housekeeping del holding (SharePoint/OneDrive)</label><input id="f_xl" placeholder="https://…" value="'+esc(c.urlExcelHK||'')+'"><label class="inl"><input type="checkbox" id="f_vhk" '+(c.validarHK?'checked':'')+'> Housekeeping requiere Apto de calidad (si no, se cierra al pulsar Hecho)</label><label class="inl"><input type="checkbox" id="f_hkn" '+(c.hkFotoNc!==false?'checked':'')+'> Housekeeping: foto obligatoria al abrir una no conformidad</label><label class="inl"><input type="checkbox" id="f_hkh" '+(c.hkFotoHecho!==false?'checked':'')+'> Housekeeping: foto obligatoria al marcar «Hecho»</label>',{onSave:async()=>{
     const sec=val('f_sec').split('\n').map(s=>s.trim()).filter(Boolean);
-    await S.db.doc('config/general').set(Object.assign({},S.config,{respDefault:c.respDefault||'',dptoDefault:val('f_dd'),plazoDias:Number(val('f_pl'))||14,edicion:val('f_ed').trim()||'Edición 1',desde:val('f_ds')||todayISO(),seccionesDeteccion:sec.length?sec:DEFAULT_SECC,validarHK:$('#f_vhk').checked,urlExcelHK:val('f_xl').trim()}))
+    await S.db.doc('config/general').set(Object.assign({},S.config,{respDefault:c.respDefault||'',dptoDefault:val('f_dd'),plazoDias:Number(val('f_pl'))||14,edicion:val('f_ed').trim()||'Edición 1',desde:val('f_ds')||todayISO(),seccionesDeteccion:sec.length?sec:DEFAULT_SECC,validarHK:$('#f_vhk').checked,hkFotoNc:$('#f_hkn').checked,hkFotoHecho:$('#f_hkh').checked,urlExcelHK:val('f_xl').trim()}))
   }})
 }
 function openPunto(id){
   const x=S.puntos.find(p=>p.id===id)||{linea:S.ajLinea!=='Todas'?S.ajLinea:(lineasList()[0]||'L8'),equipo:'',rev:'',mat:'',cant:'',per:'Mensual',activo:true,fotos:[]};
-  openSheet(id?'Editar punto '+id:'Nuevo punto','<label>Línea / zona *</label><input id="f_lin" list="dl_lin" value="'+esc(x.linea)+'"><datalist id="dl_lin">'+lineasList().map(l=>'<option value="'+esc(l)+'">').join('')+'</datalist><label>Equipo / zona *</label><input id="f_eq" value="'+esc(x.equipo)+'"><label>Qué revisar *</label><textarea id="f_rev" rows="3">'+esc(x.rev)+'</textarea><label>Material</label><input id="f_mat" value="'+esc(x.mat)+'"><label>Cantidad / elementos</label><input id="f_cant" value="'+esc(x.cant)+'"><label>Periodicidad *</label><select id="f_per">'+['Semanal','Quincenal','Mensual'].map(r=>'<option '+(r===x.per?'selected':'')+'>'+r+'</option>').join('')+'</select><label class="inl"><input type="checkbox" id="f_act" '+(x.activo!==false?'checked':'')+'> Punto activo</label>'+photoField('f_foto','Añadir foto de referencia ('+(x.fotos||[]).length+' actuales)',false,true),{wire:()=>wirePhoto('f_foto',true),onSave:async()=>{
+  openSheet(id?'Editar punto '+id:'Nuevo punto','<label>Línea / zona *</label><input id="f_lin" list="dl_lin" value="'+esc(x.linea)+'"><datalist id="dl_lin">'+lineasList().map(l=>'<option value="'+esc(l)+'">').join('')+'</datalist><label>Equipo / zona *</label><input id="f_eq" value="'+esc(x.equipo)+'"><label>Qué revisar *</label><textarea id="f_rev" rows="3">'+esc(x.rev)+'</textarea><label>Material</label><input id="f_mat" value="'+esc(x.mat)+'"><label>Cantidad / elementos</label><input id="f_cant" value="'+esc(x.cant)+'"><label>Periodicidad *</label><select id="f_per">'+['Semanal','Quincenal','Mensual'].map(r=>'<option '+(r===x.per?'selected':'')+'>'+r+'</option>').join('')+'</select><label class="inl"><input type="checkbox" id="f_act" '+(x.activo!==false?'checked':'')+'> Punto activo</label><label class="inl"><input type="checkbox" id="f_fobl" '+(id&&(S.config.sinFoto||[]).includes(id)?'':'checked')+'> Foto obligatoria al crear el parte (NO OK) y al marcar «Hecho»</label>'+photoField('f_foto','Añadir foto de referencia ('+(x.fotos||[]).length+' actuales)',false,true),{wire:()=>wirePhoto('f_foto',true),onSave:async()=>{
     const lin=val('f_lin').trim(),eq=val('f_eq').trim(),rev=val('f_rev').trim();if(!lin||!eq||!rev){toast('Línea, equipo y qué revisar son obligatorios');return false}
     let pid=id;if(!pid){const nums=S.puntos.filter(p=>p.linea===lin).map(p=>Number(String(p.id).split('-').pop())||0);const ex=S.puntos.find(p=>p.linea===lin);const pre=ex?String(ex.id).replace(/-\d+$/,''):'V-'+slug(lin).toUpperCase();pid=pre+'-'+String((nums.length?Math.max.apply(null,nums):0)+1).padStart(3,'0')}
     const fotos=(x.fotos||[]).slice();if(photos.f_foto){const nmf=pid+'_'+(fotos.length+1)+'.jpg';await putPhoto('ref/'+nmf,photos.f_foto.full);await putPhoto('ref/'+thumbName(nmf),photos.f_foto.thumb);fotos.push(nmf)}
     await S.db.doc('puntos/'+pid).set({linea:lin,equipo:eq,rev:rev,mat:val('f_mat').trim(),cant:val('f_cant').trim(),per:val('f_per'),activo:$('#f_act').checked,fotos:fotos,nota:x.nota||''})
+    {const sf=new Set(S.config.sinFoto||[]);if($('#f_fobl').checked)sf.delete(pid);else sf.add(pid);if(sf.size!==(S.config.sinFoto||[]).length||[...sf].some(k=>!(S.config.sinFoto||[]).includes(k)))await S.db.doc('config/general').set(Object.assign({},S.config,{sinFoto:[...sf]}))}
   }})
 }
 
@@ -974,6 +983,7 @@ document.addEventListener('click',async e=>{
   if(a==='foto'){showPaths([d.f]);return}
   if(a==='newHK'){if(!canAudit())return;openHK();return}
   if(a==='posteriori'){const pt=S.puntos.find(p=>p.id===d.pid);if(pt)openPosteriori(pt,statOf(pt,S.off));return}
+  if(a==='na'){const pt=S.puntos.find(p=>p.id===d.pid);if(pt)openNA(pt,statOf(pt,S.off));return}
   if(a==='ok'||a==='nook'){const pt=S.puntos.find(p=>p.id===d.pid);if(!pt)return;const st=statOf(pt,S.off);
     if(a==='ok'){t.disabled=true;try{await doOK(pt,st)}catch(x){toast(errMsg(x));t.disabled=false}}else openNoOk(pt,st);return}
   if(a==='undo'){undoRev(d.rid);return}
