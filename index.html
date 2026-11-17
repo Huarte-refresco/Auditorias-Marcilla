@@ -13,6 +13,13 @@
 <div id="toast"></div>
 <script src="config.js"></script>
 <script src="supabase.min.js"></script>
-<script src="app.js?v=20261116a"></script>
+<script src="app.js?v=20261117a"></script>
+<script>
+/* Si la página guardada en el móvil/navegador es de una versión antigua, se recarga sola con la nueva */
+(function(){try{var cur=((document.querySelector('script[src*="app.js"]').getAttribute('src')||'').match(/v=(\w+)/)||[])[1];
+function chk(){fetch('index.html?t='+Date.now(),{cache:'no-store'}).then(function(r){return r.text()}).then(function(t){var m=t.match(/app\.js\?v=(\w+)/);
+if(m&&cur&&m[1]!==cur&&location.search.indexOf('u='+m[1])<0){location.replace(location.pathname+'?u='+m[1]+location.hash)}}).catch(function(){})}
+document.addEventListener('visibilitychange',function(){if(!document.hidden)chk()});chk()}catch(e){}})();
+</script>
 </body>
 </html>
