@@ -548,7 +548,7 @@ function parteCard(x){
   if(x.estado==='Cerrado'&&x.aptoPor)h+='<div class="kv"><b>Apto calidad:</b> '+esc(x.aptoPor)+' · '+fmtD(x.aptoFecha)+(x.aptoComentario?' · '+esc(x.aptoComentario):'')+'</div>';
   if(x.estado==='Abierto'&&x.aptoComentario)h+='<div class="warnbox">Devuelto por calidad: '+esc(x.aptoComentario)+'</div>';
   let b='';
-  if(x.estado==='Abierto'){if(canResolve(x))b+='<button class="b pri sm" data-act="hecho" data-id="'+esc(x.id)+'">Hecho</button>';if(isCal()||S.isAdmin)b+='<button class="b sm" data-act="avisar" data-id="'+esc(x.id)+'">✉ Avisar'+(x.avisoEnviado?' de nuevo':'')+'</button>'}
+  if(x.estado==='Abierto'){if(canResolve(x))b+='<button class="b pri sm" data-act="hecho" data-id="'+esc(x.id)+'">Hecho</button>';if(isCal()||S.isAdmin)b+='<button class="b sm" data-act="editParte" data-id="'+esc(x.id)+'">✎ Editar</button><button class="b sm" data-act="avisar" data-id="'+esc(x.id)+'">✉ Avisar'+(x.avisoEnviado?' de nuevo':'')+'</button>'}
   if(x.estado==='Realizado'){if(isCal()||S.isAdmin){b+='<button class="b ok sm" data-act="apto" data-id="'+esc(x.id)+'" data-v="1">Apto</button><button class="b bad sm" data-act="apto" data-id="'+esc(x.id)+'" data-v="0">No apto</button>'}else if(canResolve(x))b+='<button class="b sm" data-act="avisarCal" data-id="'+esc(x.id)+'">✉ Avisar a calidad</button>'}
   if(S.isAdmin)b+='<button class="b ghost sm" data-act="delParte" data-id="'+esc(x.id)+'">Eliminar</button>';
   return h+(b?'<div class="row" style="margin-top:8px">'+b+'</div>':'')+'</article>'
@@ -826,6 +826,45 @@ function openNA(pt,st){
     const p=me();await S.db.doc('revisiones/'+st.id).set({pid:pt.id,linea:pt.linea,equipo:pt.equipo,per:pt.per,inicio:st.per.inicio,limite:st.per.limite,resultado:'N/A',fecha:nowISO(),por:actorName(),porId:p?p.id:'',obs:m});
     return{after:()=>toast('Marcado como No aplica')}}})
 }
+function openEditParte(x){
+  if(!(isCal()||S.isAdmin)||x.estado!=='Abierto'){toast('Solo se puede editar una incidencia abierta');return}
+  const hk=origenOf(x)==='Housekeeping',ids=String(x.fotoIni||'').split(',').filter(Boolean);
+  const fotosH=ids.length?'<label>Fotos de detección (marca las que quieras quitar)</label><div>'+ids.map(f=>'<label style="display:inline-block;margin:0 10px 6px 0"><input type="checkbox" class="e_rm" value="'+esc(f)+'"> quitar<br><img data-ph="inc/'+esc(f)+'_t.jpg" alt="" style="height:60px;border-radius:4px"></label>').join('')+'</div>':'';
+  const dpto='<label>Departamento que resuelve *</label><select id="e_dpto">'+optsDeptos(deptOf(x))+'</select><label>Responsable concreto (opcional)</label><select id="e_resp"><option value="">—</option>'+S.personas.map(p=>'<option value="'+esc(p.id)+'" '+(p.id===x.resp?'selected':'')+'>'+esc(p.nombre)+'</option>').join('')+'</select>';
+  const fotoNew=photoField('f_foto',ids.length?'Añadir más fotos':'Foto',false);
+  let body;
+  if(hk){
+    const secc=secciones();
+    body='<div class="muted small">'+esc(x.id)+'</div><label>Fecha apertura</label><input type="date" id="e_fecha" value="'+esc(x.fecha)+'"><label>Sección detección *</label><select id="e_det"><option value="">—</option>'+secc.map(s=>'<option '+(s===(x.seccionDeteccion||x.zona)?'selected':'')+'>'+esc(s)+'</option>').join('')+'</select><label>NCm/NCM *</label><select id="e_ncm"></select><input id="e_ncmo" placeholder="Escribe el código o punto" style="display:none"><label>Tipo de no conformidad *</label><select id="e_tipo"><option value="">—</option>'+['Observación','No conformidad menor','No conformidad mayor'].map(t=>'<option '+(t===x.tipo?'selected':'')+'>'+t+'</option>').join('')+'</select>'+dpto+'<label>Resumen no conformidades *</label><textarea id="e_resumen" rows="2">'+esc(x.resumen||'')+'</textarea><label>Análisis de causas *</label><textarea id="e_causas" rows="2">'+esc(x.causas||'')+'</textarea><label>Acciones correctivas/preventivas *</label><textarea id="e_acc" rows="2">'+esc(x.accion||'')+'</textarea><label>Fecha prevista *</label><input type="date" id="e_prev" value="'+esc(x.fechaPrevista||'')+'">'+fotosH+fotoNew
+  }else{
+    body='<div class="kv"><b>'+esc(x.zona)+'</b></div><label>Elemento *</label><input id="e_elem" value="'+esc(x.elemento||'')+'"><label>Acción a realizar *</label><textarea id="e_acc" rows="3">'+esc(x.accion||'')+'</textarea>'+dpto+'<label>Fecha prevista *</label><input type="date" id="e_prev" value="'+esc(x.fechaPrevista||'')+'">'+fotosH+fotoNew
+  }
+  openSheet('Editar incidencia '+x.id,body,{label:'Guardar cambios',wire:()=>{wirePhoto('f_foto');hydrate();
+    if(hk){const d=$('#e_det'),n=$('#e_ncm'),o=$('#e_ncmo');
+      const fill=(sel)=>{const L=Object.keys(HK_SEC).find(k=>HK_SEC[k]===d.value);n.disabled=!d.value;o.style.display='none';
+        n.innerHTML=!d.value?'<option value="">Elige primero la sección</option>':'<option value="">—</option>'+(L?Object.keys(HK_CAT).filter(k=>k[0]===L).map(k=>'<option value="'+k+'" '+(k===sel?'selected':'')+'>'+k+' · '+esc((HK_TIPO[k.split('.')[1]]||'')+' · '+HK_CAT[k])+'</option>').join(''):'')+'<option value="__o" '+(sel==='__o'?'selected':'')+'>Otro (escribir)…</option>'};
+      const cur=x.ncm||x.elemento||'',known=!!HK_CAT[cur];fill(known?cur:'__o');if(!known&&cur){o.style.display='';o.value=cur}
+      d.addEventListener('change',()=>fill(''));n.addEventListener('change',()=>{o.style.display=n.value==='__o'?'':'none'})}
+  },onSave:async()=>{
+    const keep=ids.filter(f=>![...document.querySelectorAll('.e_rm')].some(c=>c.checked&&c.value===f));
+    const nuevas=await savePhotosInc(photos.f_foto_list,null);
+    const fotoIni=keep.concat(nuevas?nuevas.split(','):[]).join(',');
+    const req=hk?fotoReq('hkNC'):fotoReq('v',x.pid);
+    if(!fotoIni&&req){toast('Debe quedar al menos una foto');return false}
+    let upd;
+    if(hk){
+      const ncm=(val('e_ncm')==='__o'?val('e_ncmo'):val('e_ncm')).trim(),det=val('e_det');
+      upd={fecha:val('e_fecha'),zona:det,seccionDeteccion:det,elemento:ncm,ncm:ncm,tipo:val('e_tipo'),dpto:val('e_dpto'),resp:val('e_resp')||'',resumen:val('e_resumen').trim(),causas:val('e_causas').trim(),accion:val('e_acc').trim(),fechaPrevista:val('e_prev'),fotoIni:fotoIni};
+      if(!upd.fecha||!ncm||!upd.tipo||!det||!upd.dpto||!upd.resumen||!upd.causas||!upd.accion||!upd.fechaPrevista){toast('Rellena todos los campos obligatorios');return false}
+    }else{
+      upd={elemento:val('e_elem').trim(),accion:val('e_acc').trim(),dpto:val('e_dpto'),resp:val('e_resp')||'',fechaPrevista:val('e_prev'),fotoIni:fotoIni};
+      if(!upd.elemento||!upd.accion||!upd.dpto||!upd.fechaPrevista){toast('Rellena todos los campos obligatorios');return false}
+    }
+    await S.db.doc('partes/'+x.id).update(upd);
+    const cambioDest=upd.dpto!==deptOf(x)||(upd.resp||'')!==(x.resp||'');
+    return{after:()=>{toast('Incidencia '+x.id+' actualizada');if(cambioDest&&confirm('Has cambiado el departamento o el responsable. ¿Avisar por correo al nuevo destinatario?'))notify(mailNuevoParte(Object.assign({},x,upd)))}}
+  }})
+}
 async function doOK(pt,st){
   const p=me();
   await S.db.doc('revisiones/'+st.id).set({pid:pt.id,linea:pt.linea,equipo:pt.equipo,per:pt.per,inicio:st.per.inicio,limite:st.per.limite,resultado:'OK',fecha:nowISO(),por:actorName(),porId:p.id})
@@ -992,6 +1031,7 @@ document.addEventListener('click',async e=>{
   const x=S.partes.find(q=>q.id===d.id);
   if(a==='hecho'&&x){if(!canResolve(x)){toast('Solo puede cerrarla el responsable asignado (o Nuria)');return}openHecho(x);return}
   if(a==='apto'&&x){openApto(x,d.v==='1');return}
+  if(a==='editParte'&&x){openEditParte(x);return}
   if(a==='avisar'&&x){openMail(mailNuevoParte(x));return}
   if(a==='avisarCal'&&x){openMail(mailRealizado(x));return}
   if(a==='digest'){openMail(mailDigest(d.r));return}
