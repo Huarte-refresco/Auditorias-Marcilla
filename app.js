@@ -48,7 +48,7 @@ const DEFAULT_SECC=Object.values(HK_SEC);
 const S={db:null,auth:{step:'email',email:''},started:false,account:null,emails:[],siteId:null,driveId:null,fatal:null,isAdmin:false,personas:[],deptos:[],puntos:[],revs:{},partes:[],
  config:{plazoDias:14,edicion:'Edición 1',desde:'2026-10-01',respDefault:'',dptoDefault:'',seccionesDeteccion:DEFAULT_SECC,validarHK:false},
  loaded:{},persona:null,tab:'inicio',linea:null,perF:'Todas',inPer:'Todas',inOff:0,resPer:'mes',resMes:todayISO().slice(0,7),resOrig:'Todos',soloPend:true,off:0,
- fEstado:'Abierto',fResp:null,fOrigen:'Todos',fDpto:'Todos',fMes:'',focus:null,
+ fEstado:'Abierto',fResp:null,hkFEstado:null,hkFResp:null,fOrigen:'Todos',fDpto:'Todos',fMes:'',focus:null,
  repTab:'hoja',repLinea:null,repMes:todayISO().slice(0,7),repAll:false,repOpen:false,rep:{key:'',revs:[],loading:false},
  ajLinea:'Todas',nombreSugerido:'',actor:null};
 const photos={};
@@ -511,8 +511,16 @@ function vHK(){
   let h='<h2>Housekeeping</h2><p class="muted">Auditoría de orden y limpieza. Cada no conformidad avisa por correo al departamento que la resuelve.</p>';
   h+=misIncs('Housekeeping');
   if(canAudit())h+='<p style="margin:14px 0"><button class="b pri big" data-act="newHK">+ Nueva no conformidad</button></p>';
-  h+='<h3>Todas las no conformidades (últimas '+Math.min(15,hk.length)+' de '+hk.length+')</h3>';
-  return h+(hk.length?hk.slice(0,15).map(parteCard).join(''):empty('Todavía no hay no conformidades de Housekeeping.'))
+  const p=me(),sup=!!p&&(esCalP(p)||S.isAdmin);
+  if(S.hkFEstado==null)S.hkFEstado=sup?'Todos':'Abierto';
+  if(S.hkFResp==null)S.hkFResp=sup?'todos':'dpto';
+  let l=hk.slice();
+  if(S.hkFEstado!=='Todos')l=l.filter(x=>x.estado===S.hkFEstado);
+  if(S.hkFResp==='dpto'&&p)l=l.filter(x=>inDept(p,deptOf(x))||x.resp===p.id);
+  else if(S.hkFResp==='yo'&&p)l=l.filter(x=>x.resp===p.id);
+  h+='<h3>No conformidades de Housekeeping ('+Math.min(30,l.length)+' de '+l.length+')</h3>';
+  h+='<div class="row"><div class="grow"><select data-set="hkFEstado">'+['Abierto','Realizado','Cerrado','Todos'].map(x=>'<option value="'+x+'" '+(x===S.hkFEstado?'selected':'')+'>'+(x==='Todos'?'Todos los estados':x==='Abierto'?'Abiertas':x==='Realizado'?'Realizadas':'Cerradas')+'</option>').join('')+'</select></div><div class="grow"><select data-set="hkFResp"><option value="dpto" '+(S.hkFResp==='dpto'?'selected':'')+'>Mi departamento</option><option value="yo" '+(S.hkFResp==='yo'?'selected':'')+'>Asignadas a mí</option><option value="todos" '+(S.hkFResp==='todos'?'selected':'')+'>Todas</option></select></div></div>';
+  return h+(l.length?l.slice(0,30).map(parteCard).join(''):empty(hk.length?'No hay no conformidades con este filtro.':'Todavía no hay no conformidades de Housekeeping.'))
 }
 function openHK(){
   const secc=secciones(),prev=iso(addDays(new Date(),Number(S.config.plazoDias)||14));
