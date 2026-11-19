@@ -571,11 +571,12 @@ function vPartes(){
     if(S.fDpto!=='Todos')l=l.filter(x=>deptOf(x)===S.fDpto);
     if(S.fMes)l=l.filter(x=>String(x.fecha).startsWith(S.fMes));
     if(S.fResp==='mios'&&p)l=l.filter(esMio);
+    else if(S.fResp==='yo'&&p)l=l.filter(x=>x.resp===p.id);
   }
   let h='<h2>Incidencias</h2>';
   if(S.focus)h+='<p><button class="b sm" data-act="clearFocus">'+(canAudit()?'← Ver todas las incidencias':'← Volver al inicio')+'</button></p>';
   else{
-    h+='<div class="row"><div class="grow"><select data-set="fEstado">'+['Abierto','Realizado','Cerrado','Todos'].map(x=>'<option '+(x===S.fEstado?'selected':'')+'>'+x+'</option>').join('')+'</select></div><div class="grow"><select data-set="fOrigen">'+['Todos','Vidrios','Housekeeping'].map(x=>'<option '+(x===S.fOrigen?'selected':'')+'>'+x+'</option>').join('')+'</select></div><div class="grow"><select data-set="fResp"><option value="mios" '+(S.fResp==='mios'?'selected':'')+'>Mi departamento</option><option value="todos" '+(S.fResp==='todos'?'selected':'')+'>Todas</option></select></div></div>';
+    h+='<div class="row"><div class="grow"><select data-set="fEstado">'+['Abierto','Realizado','Cerrado','Todos'].map(x=>'<option '+(x===S.fEstado?'selected':'')+'>'+x+'</option>').join('')+'</select></div><div class="grow"><select data-set="fOrigen">'+['Todos','Vidrios','Housekeeping'].map(x=>'<option '+(x===S.fOrigen?'selected':'')+'>'+x+'</option>').join('')+'</select></div><div class="grow"><select data-set="fResp"><option value="mios" '+(S.fResp==='mios'?'selected':'')+'>Mi departamento</option><option value="yo" '+(S.fResp==='yo'?'selected':'')+'>Asignadas a mí</option><option value="todos" '+(S.fResp==='todos'?'selected':'')+'>Todas</option></select></div></div>';
     h+='<div class="row" style="margin-top:8px"><div class="grow"><select data-set="fDpto">'+['Todos'].concat(S.deptos.map(d=>d.nombre).sort()).map(x=>'<option '+(x===S.fDpto?'selected':'')+'>'+esc(x)+'</option>').join('')+'</select></div><div class="grow"><input type="month" data-set="fMes" value="'+esc(S.fMes)+'" title="Mes (vacío = todos)"></div></div>';
     if(isCal()||S.isAdmin){
       const por={};S.partes.filter(x=>x.estado==='Abierto'&&deptOf(x)).forEach(x=>{(por[deptOf(x)]=por[deptOf(x)]||[]).push(x)});
