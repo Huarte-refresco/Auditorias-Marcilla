@@ -48,7 +48,7 @@ const DEFAULT_SECC=Object.values(HK_SEC);
 const S={db:null,auth:{step:'email',email:''},started:false,account:null,emails:[],siteId:null,driveId:null,fatal:null,isAdmin:false,personas:[],deptos:[],puntos:[],revs:{},partes:[],
  config:{plazoDias:14,edicion:'Edición 1',desde:'2026-10-01',respDefault:'',dptoDefault:'',seccionesDeteccion:DEFAULT_SECC,validarHK:false},
  loaded:{},persona:null,tab:'inicio',linea:null,perF:'Todas',inPer:'Todas',inOff:0,resPer:'mes',resMes:todayISO().slice(0,7),resOrig:'Todos',soloPend:true,off:0,
- fEstado:'Abierto',fResp:null,hkFEstado:null,hkFResp:null,fOrigen:'Todos',fDpto:'Todos',fMes:'',focus:null,
+ fEstado:'Abierto',fResp:null,hkFEstado:null,hkFResp:null,misF:'dpto',fOrigen:'Todos',fDpto:'Todos',fMes:'',focus:null,
  repTab:'hoja',repLinea:null,repMes:todayISO().slice(0,7),repAll:false,repOpen:false,rep:{key:'',revs:[],loading:false},
  ajLinea:'Todas',nombreSugerido:'',actor:null};
 const photos={};
@@ -465,10 +465,13 @@ function vInicio(){
 /* ---------- Revisión de vidrios ---------- */
 function misIncs(origen){
   const ls=S.partes.filter(x=>origenOf(x)===origen);
-  const mine=ls.filter(x=>x.estado==='Abierto'&&(esMio(x)||canResolve(x))).sort((a,b)=>String(a.fechaPrevista||'').localeCompare(String(b.fechaPrevista||'')));
+  const p0=me();let mine=ls.filter(x=>x.estado==='Abierto'&&(esMio(x)||canResolve(x))).sort((a,b)=>String(a.fechaPrevista||'').localeCompare(String(b.fechaPrevista||'')));
   const val=(canAudit())?ls.filter(x=>x.estado==='Realizado'):[];
+  const nTodas=mine.length,soloYo=S.misF==='yo'&&!!p0;
+  if(soloYo)mine=mine.filter(x=>x.resp===p0.id);
   let h='<h3>'+(origen==='Vidrios'?'Incidencias de vidrios':'Incidencias de Housekeeping')+' pendientes'+(mine.length?' ('+mine.length+')':'')+'</h3>';
-  h+=mine.length?mine.map(x=>parteCard(x)).join(''):'<div class="empty">No tienes incidencias pendientes de '+(origen==='Vidrios'?'vidrios':'Housekeeping')+' ✔</div>';
+  if(nTodas||soloYo)h+='<div class="row" style="margin-bottom:8px"><div class="grow"><select data-set="misF"><option value="dpto" '+(!soloYo?'selected':'')+'>Ver: las de mi departamento</option><option value="yo" '+(soloYo?'selected':'')+'>Ver: solo las asignadas a mi nombre</option></select></div></div>';
+  h+=mine.length?mine.map(x=>parteCard(x)).join(''):'<div class="empty">'+(soloYo?'No tienes incidencias asignadas a tu nombre':'No tienes incidencias pendientes de '+(origen==='Vidrios'?'vidrios':'Housekeeping'))+' ✔</div>';
   if(val.length)h+='<h3>Por validar (Apto calidad) — '+(origen==='Vidrios'?'vidrios':'Housekeeping')+' ('+val.length+')</h3>'+val.map(x=>parteCard(x)).join('');
   return h
 }
