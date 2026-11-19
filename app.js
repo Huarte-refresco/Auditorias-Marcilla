@@ -556,7 +556,7 @@ function parteCard(x){
   if(x.estado==='Cerrado'&&x.aptoPor)h+='<div class="kv"><b>Apto calidad:</b> '+esc(x.aptoPor)+' · '+fmtD(x.aptoFecha)+(x.aptoComentario?' · '+esc(x.aptoComentario):'')+'</div>';
   if(x.estado==='Abierto'&&x.aptoComentario)h+='<div class="warnbox">Devuelto por calidad: '+esc(x.aptoComentario)+'</div>';
   let b='';
-  if(x.estado==='Abierto'){if(canResolve(x))b+='<button class="b pri sm" data-act="hecho" data-id="'+esc(x.id)+'">Hecho</button>';if(isCal()||S.isAdmin)b+='<button class="b sm" data-act="editParte" data-id="'+esc(x.id)+'">✎ Editar</button><button class="b sm" data-act="avisar" data-id="'+esc(x.id)+'">✉ Avisar'+(x.avisoEnviado?' de nuevo':'')+'</button>'}
+  if(x.estado==='Abierto'){if(canResolve(x))b+='<button class="b pri sm" data-act="hecho" data-id="'+esc(x.id)+'">Hecho</button><button class="b sm" data-act="reasignar" data-id="'+esc(x.id)+'">👤 Reasignar</button>';if(isCal()||S.isAdmin)b+='<button class="b sm" data-act="editParte" data-id="'+esc(x.id)+'">✎ Editar</button><button class="b sm" data-act="avisar" data-id="'+esc(x.id)+'">✉ Avisar'+(x.avisoEnviado?' de nuevo':'')+'</button>'}
   if(x.estado==='Realizado'){if(isCal()||S.isAdmin){b+='<button class="b ok sm" data-act="apto" data-id="'+esc(x.id)+'" data-v="1">Apto</button><button class="b bad sm" data-act="apto" data-id="'+esc(x.id)+'" data-v="0">No apto</button>'}else if(canResolve(x))b+='<button class="b sm" data-act="avisarCal" data-id="'+esc(x.id)+'">✉ Avisar a calidad</button>'}
   if(S.isAdmin)b+='<button class="b ghost sm" data-act="delParte" data-id="'+esc(x.id)+'">Eliminar</button>';
   return h+(b?'<div class="row" style="margin-top:8px">'+b+'</div>':'')+'</article>'
@@ -834,6 +834,25 @@ function openNA(pt,st){
     const p=me();await S.db.doc('revisiones/'+st.id).set({pid:pt.id,linea:pt.linea,equipo:pt.equipo,per:pt.per,inicio:st.per.inicio,limite:st.per.limite,resultado:'N/A',fecha:nowISO(),por:actorName(),porId:p?p.id:'',obs:m});
     return{after:()=>toast('Marcado como No aplica')}}})
 }
+function openReasignar(x){
+  if(x.estado!=='Abierto'||!(canResolve(x)||isCal()||S.isAdmin)){toast('No puedes reasignar esta incidencia');return}
+  const dp=deptOf(x),act=personaById(x.resp);
+  const todas=S.personas.filter(p=>p.email).slice().sort((a,b)=>String(a.nombre).localeCompare(String(b.nombre)));
+  const mios=todas.filter(p=>p.departamento===dp||inDept(p,dp)),otros=todas.filter(p=>!mios.includes(p));
+  const op=p=>'<option value="'+esc(p.id)+'" '+(p.id===x.resp?'selected':'')+'>'+esc(p.nombre)+(p.rol?' · '+esc(p.rol):'')+(p.departamento&&p.departamento!==dp?' · '+esc(p.departamento):'')+(p.id===x.resp?' (actual)':'')+'</option>';
+  openSheet('Reasignar '+x.id,'<div class="kv"><b>'+esc(x.zona)+'</b><br>'+esc(x.elemento||x.ncm||'')+'<br><span class="muted small">Ahora: '+(act?esc(act.nombre):'sin responsable concreto ('+esc(dp||'sin departamento')+')')+'</span></div><label>¿Quién debe solucionarla? *</label><select id="r_p"><option value="">—</option>'+(mios.length?'<optgroup label="'+esc(dp||'Mi departamento')+'">'+mios.map(op).join('')+'</optgroup>':'')+(otros.length?'<optgroup label="Otros departamentos">'+otros.map(op).join('')+'</optgroup>':'')+'</select><label>Mensaje para esa persona (opcional)</label><textarea id="r_m" rows="2" placeholder="Ej.: te la paso porque es de tu zona"></textarea><p class="muted small">Se le abrirá un correo para avisarle. La incidencia pasará a su lista de pendientes.</p>',{label:'Reasignar',onSave:async()=>{
+    const id=val('r_p');if(!id){toast('Elige a la persona');return false}
+    if(id===x.resp){toast('Ya está asignada a esa persona');return false}
+    const n=personaById(id);if(!n){toast('Persona no encontrada');return false}
+    const msg=val('r_m').trim();
+    await S.db.doc('partes/'+x.id).update({resp:id});
+    const hk=origenOf(x)==='Housekeeping';
+    const det=hk?'NCm/NCM: '+(x.ncm||x.elemento)+(x.tipo?'\nTipo: '+x.tipo:'')+'\nSección: '+x.zona+'\nResumen: '+x.resumen+'\nAcciones: '+x.accion:'Zona: '+x.zona+'\nElemento: '+x.elemento+'\nAcción a realizar: '+x.accion;
+    const m={to:[n.email],cc:uniq([mailOf(act),mailOf(me())].filter(Boolean)).filter(e=>e!==mailOf(n)),subject:'['+origenOf(x)+'] Incidencia '+x.id+' reasignada a ti · '+(x.zona||''),
+      body:'Hola '+String(n.nombre||'').split(' ')[0]+',\n\n'+miNombre()+' te ha asignado la incidencia '+x.id+' para que la soluciones:\n\n'+det+'\nFecha prevista: '+fmtD(x.fechaPrevista)+(msg?'\n\nMensaje: '+msg:'')+'\n\nPor favor, entra en la app de Auditorías de planta, realiza la acción y márcala como "Hecho"'+(fotoReq(hk?'hkHecho':'v',x.pid)?' con una foto':'')+'.'+linkTxt(x.id)+'\n\nGracias,\n'+miNombre()};
+    return{after:()=>{toast('Incidencia reasignada a '+n.nombre);openMail(m)}}
+  }})
+}
 function openEditParte(x){
   if(!(isCal()||S.isAdmin)||x.estado!=='Abierto'){toast('Solo se puede editar una incidencia abierta');return}
   const hk=origenOf(x)==='Housekeeping',ids=String(x.fotoIni||'').split(',').filter(Boolean);
@@ -1039,6 +1058,7 @@ document.addEventListener('click',async e=>{
   const x=S.partes.find(q=>q.id===d.id);
   if(a==='hecho'&&x){if(!canResolve(x)){toast('Solo puede cerrarla el responsable asignado (o Nuria)');return}openHecho(x);return}
   if(a==='apto'&&x){openApto(x,d.v==='1');return}
+  if(a==='reasignar'&&x){openReasignar(x);return}
   if(a==='editParte'&&x){openEditParte(x);return}
   if(a==='avisar'&&x){openMail(mailNuevoParte(x));return}
   if(a==='avisarCal'&&x){openMail(mailRealizado(x));return}
